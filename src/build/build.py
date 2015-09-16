@@ -27,7 +27,7 @@ from core import *
 HERE=os.getcwd()
 ROOT_DIR=os.path.realpath(os.path.join(os.path.dirname(__file__),".."))
 #output binaries and source input defined here
-BIN_DIR=os.path.join(ROOT_DIR,"..","qc","lib")
+BIN_DIR=os.path.join(ROOT_DIR,"..","lib")
 if not os.path.exists(BIN_DIR):
 	os.mkdir(BIN_DIR)
 HELIOS_URL="https://bitbucket.org/busstop/helios"
@@ -59,6 +59,7 @@ DEF_GEOM="libfgeom.def"
 LIB_GRID="libgrid"
 SRC_GRID=[os.path.join(ROOT_DIR,"etc","grid_stuff.c")]
 #executables that depend on helios - will need heilios/include
+"""
 #page
 PAGE_EXE="page"
 SRC_PAGE=[os.path.join(HELIOS_REPO,"src","page.c")]
@@ -68,8 +69,10 @@ SRC_HAYSTACK=[os.path.join(ROOT_DIR,"etc","haystack.c")]
 #DVR90
 DVR90_EXE="DVR90"
 SRC_DVR90=[os.path.join(ROOT_DIR,"etc","DVR90.c")]
+
 #path to pg_connection.py output file
 PG_CONNECTION_FILE=os.path.join(ROOT_DIR,"..","qc","db","pg_connection.py")
+"""
 
 
 def is_newer(p1,p2):
@@ -115,9 +118,9 @@ OLIB_TRI=BuildObject(LIB_TRI,BIN_DIR,[],defines=TRI_DEFINES,def_file=DEF_TRI)
 OLIB_INDEX=BuildObject(LIB_INDEX,BIN_DIR,SRC_INDEX,link=[OLIB_TRI],def_file=DEF_INDEX)
 OLIB_GEOM=BuildObject(LIB_GEOM,BIN_DIR,SRC_GEOM,def_file=DEF_GEOM)
 OLIB_GRID=BuildObject(LIB_GRID,BIN_DIR,SRC_GRID)
-OPAGE_EXE=BuildObject(PAGE_EXE,BIN_DIR,SRC_PAGE,INC_HELIOS,is_library=False)
-OHAYSTACK_EXE=BuildObject(HAYSTACK_EXE,BIN_DIR,SRC_HAYSTACK,INC_HELIOS,is_library=False)
-ODVR90_EXE=BuildObject(DVR90_EXE,BIN_DIR,SRC_DVR90,INC_HELIOS,is_library=False)
+#OPAGE_EXE=BuildObject(PAGE_EXE,BIN_DIR,SRC_PAGE,INC_HELIOS,is_library=False)
+#OHAYSTACK_EXE=BuildObject(HAYSTACK_EXE,BIN_DIR,SRC_HAYSTACK,INC_HELIOS,is_library=False)
+#ODVR90_EXE=BuildObject(DVR90_EXE,BIN_DIR,SRC_DVR90,INC_HELIOS,is_library=False)
 
 
 def patch_triangle():
@@ -244,12 +247,14 @@ def main (args):
 	assert(rc==0)
 	#stuff that depends on helios header 'libraries'
 	helios_headers=glob.glob(HELIOS_HEADERS)
-	for out in [OLIB_SLASH,OPAGE_EXE,OHAYSTACK_EXE,ODVR90_EXE]:
+	#for out in [OLIB_SLASH,OPAGE_EXE,OHAYSTACK_EXE,ODVR90_EXE]:
+	for out in [OLIB_SLASH]:
 		out.set_needs_rebuild(helios_headers)
 		out.needs_rebuild|=pargs.force
 	is_debug=pargs.debug
 	sl="*"*50
-	for out in [OLIB_TRI,OLIB_INDEX,OLIB_SLASH,OLIB_GEOM,OLIB_GRID,OPAGE_EXE,OHAYSTACK_EXE,ODVR90_EXE]:
+	#for out in [OLIB_TRI,OLIB_INDEX,OLIB_SLASH,OLIB_GEOM,OLIB_GRID,OPAGE_EXE,OHAYSTACK_EXE,ODVR90_EXE]:
+	for out in [OLIB_TRI,OLIB_INDEX,OLIB_SLASH,OLIB_GEOM,OLIB_GRID]:
 		if not out.needs_rebuild:
 			print("%s\n%s does not need a rebuild. Use -force to force a rebuild.\n%s" %(sl, out.name,sl))
 			continue

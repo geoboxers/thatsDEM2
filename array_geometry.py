@@ -15,7 +15,7 @@
 import sys,os,ctypes
 import numpy as np
 from osgeo import ogr
-LIBDIR=os.path.realpath(os.path.join(os.path.dirname(__file__),"../lib"))
+LIBDIR=os.path.realpath(os.path.join(os.path.dirname(__file__),"lib"))
 LIBNAME="libfgeom"
 XY_TYPE=np.ctypeslib.ndpointer(dtype=np.float64,flags=['C','O','A','W'])
 GRID_TYPE=np.ctypeslib.ndpointer(dtype=np.float64,ndim=2,flags=['C','O','A','W'])
