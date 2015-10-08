@@ -20,14 +20,16 @@ from osgeo import ogr, gdal
 import numpy as np
 import time
 
-# placeholder for tile-wkt - thos token will be replaced by actual wkt in run time.
+# placeholder for tile-wkt -
+# this token will be replaced by actual wkt in run time.
 EXTENT_WKT = "WKT_EXT"
 
 
 def open(cstr, layername=None, layersql=None, extent=None):
     """
     Common opener of an OGR datasource. Use either layername or layersql.
-    Will directly modify layersql to make the data provider do the filtering by extent if using the WKT_EXT token.
+    Will directly modify layersql to make the data provider
+    do the filtering by extent if using the WKT_EXT token.
     Returns:
         OGR datasource ,  OGR layer
     """
@@ -71,17 +73,10 @@ def nptype2gdal(dtype):
     return gdal.GDT_Float64
 
 
-def burn_vector_layer(cstr, georef, shape, layername=None, layersql=None,
-                      attr=None, nd_val=0, dtype=np.bool, all_touched=True):
-    """
-    Burn a vector layer. Will use vector_io.open to fetch the layer.
-    Returns:
-        A numpy array of the requested dtype and shape.
-    """
-    # For now just burn a mask - can be expanded to burn attrs. by adding keywords.
-    # input a GDAL-style georef
-    # If executing fancy sql like selecting buffers etc, be sure to add a
-    # where ST_Intersects(geom,TILE_POLY) - otherwise its gonna be slow....
+def get_extent(georef, shape):
+    """Simple method to compute a grid extent.
+    Similar to method in grid.py, but included here
+    for self containedness."""
     extent = (
         georef[0],
         georef[3] +
@@ -91,26 +86,43 @@ def burn_vector_layer(cstr, georef, shape, layername=None, layersql=None,
         shape[0] *
         georef[1],
         georef[3])  # x1,y1,x2,y2
+    return extent
+
+
+# Example of burning vector layer from a shape file into a raster with
+# same georeference as an existing image:
+# ds = gdal.Open("myraster.tif")
+#
+# burn_vector_layer("myfile.shp", ds.GetGeoTransform(),
+#  (ds.RasterYSize,ds.RasterXSize), attr ="MyAttr", dtype = np.int32,
+# , osr.SpatialReference(ds.GetProjection()))
+# Will warp input geometries on the fly to output projection!
+
+def burn_vector_layer(cstr, georef, shape, layername=None, layersql=None,
+                      attr=None, nd_val=0, dtype=np.bool, all_touched=True,
+                      burn3d=False, output_srs=None):
+    """
+    Burn a vector layer. Will use vector_io.open to fetch the layer.
+    Layer can be specified by layersql or layername (else first layer).
+    Burn 'mode' defaults to a 'mask', but can be also set by an attr or
+    as z-value for 3d geoms.
+    Args:
+        cstr: OGR connection string
+        georef: GDAL style georef, as returned by ds.GetGeoTransform()
+        shape: Numpy shape of output raster (nrows,ncols)
+        ...
+        output_srs: osr.SpatialReference, if None will assumme matching
+                    coordinate systems.
+    Returns:
+        A numpy array of the requested dtype and shape.
+    """
+    # input a GDAL-style georef
+    # If executing fancy sql like selecting buffers etc, be sure to add a
+    # where ST_Intersects(geom,TILE_POLY) - otherwise its gonna be slow....
+    extent = get_extent(georef, shape)
     ds, layer = open(cstr, layername, layersql, extent)
-    # This should do nothing if already filtered in sql...
-    layer.SetSpatialFilterRect(*extent)
-    mem_driver = gdal.GetDriverByName("MEM")
-    gdal_type = nptype2gdal(dtype)
-    mask_ds = mem_driver.Create("dummy", int(shape[1]), int(shape[0]), 1, gdal_type)
-    mask_ds.SetGeoTransform(georef)
-    mask = np.ones(shape, dtype=dtype) * nd_val
-    mask_ds.GetRasterBand(1).WriteArray(mask)  # write nd_val to output
-    # mask_ds.SetProjection('LOCAL_CS["arbitrary"]')
-    if all_touched:
-        options = ['ALL_TOUCHED=TRUE']
-    else:
-        options = []
-    if attr is not None:  # we want to burn an attribute - take a different path
-        options.append('ATTRIBUTE=%s' % attr)
-        ok = gdal.RasterizeLayer(mask_ds, [1], layer, options=options)
-    else:
-        ok = gdal.RasterizeLayer(mask_ds, [1], layer, burn_values=[1], options=options)
-    A = mask_ds.ReadAsArray().astype(dtype)
+    A = just_burn_layer(layer, georef, shape, attr, nd_val, dtype, all_touched,
+                        burn3d, output_srs)
     if layersql is not None:
         ds.ReleaseResultSet(layer)
     layer = None
@@ -119,23 +131,17 @@ def burn_vector_layer(cstr, georef, shape, layername=None, layersql=None,
 
 
 def just_burn_layer(layer, georef, shape, attr=None, nd_val=0,
-                    dtype=np.bool, all_touched=True, burn3d=False):
+                    dtype=np.bool, all_touched=True, burn3d=False,
+                    output_srs=None):
     """
-    Burn a vector layer. Similar to vector_io.burn_vector_layer except that the layer is given directly in args.
+    Burn a vector layer. Similar to vector_io.burn_vector_layer
+    except that the layer is given directly in args.
     Returns:
         A numpy array of the requested dtype and shape.
     """
     if burn3d and attr is not None:
         raise ValueError("burn3d and attr can not both be set")
-    extent = (
-        georef[0],
-        georef[3] +
-        shape[1] *
-        georef[5],
-        georef[0] +
-        shape[0] *
-        georef[1],
-        georef[3])  # x1,y1,x2,y2
+    extent = get_extent(georef, shape)
     layer.SetSpatialFilterRect(*extent)
     mem_driver = gdal.GetDriverByName("MEM")
     gdal_type = nptype2gdal(dtype)
@@ -143,22 +149,33 @@ def just_burn_layer(layer, georef, shape, attr=None, nd_val=0,
     mask_ds.SetGeoTransform(georef)
     mask = np.ones(shape, dtype=dtype) * nd_val
     mask_ds.GetRasterBand(1).WriteArray(mask)  # write nd_val to output
-    srs = layer.GetSpatialRef()
+
+    if output_srs is not None:
+        # If output_srs is given, this takes precedence
+        srs = output_srs
+    else:
+        # Use same coord sys
+        srs = layer.GetSpatialRef()
     if srs is not None:
         mask_ds.SetProjection(srs.ExportToWkt())
     options = []
     if all_touched:
         options.append('ALL_TOUCHED=TRUE')
-    if attr is not None:  # we want to burn an attribute - take a different path
+    if attr is not None and burn3d:
+        raise ValueError("attr and burn3d keywords incompatible.")
+    if attr is not None:
+        # we want to burn an attribute - take a different path
         options.append('ATTRIBUTE=%s' % attr)
-    if burn3d:
+    elif burn3d:
         options.append('BURN_VALUE_FROM=Z')
     if attr is not None:
         ok = gdal.RasterizeLayer(mask_ds, [1], layer, options=options)
     else:
         if burn3d:
-            # as explained by Even Rouault default burn val is 255 if not given. So
-            # for burn3d we MUST supply burnval=0 and 3d part will be added to that.
+            # As explained by Even Rouault:
+            # default burn val is 255 if not given.
+            # So for burn3d we MUST supply burnval=0
+            # and 3d part will be added to that.
             burn_val = 0
         else:
             burn_val = 1
@@ -169,12 +186,13 @@ def just_burn_layer(layer, georef, shape, attr=None, nd_val=0,
 
 def get_geometries(cstr, layername=None, layersql=None, extent=None, explode=True):
     """
-    Use vector_io.open to fetch a layer, read geometries and explode multi-geometries if explode=True
+    Use vector_io.open to fetch a layer,
+    read geometries and explode multi-geometries if explode=True
     Returns:
         A list of OGR geometries.
     """
     # If executing fancy sql like selecting buffers etc, be sure to add a
-    # where ST_Intersects(geom,TILE_POLY) - otherwise its gonna be slow....
+    # where ST_Intersects(geom,TILE_POLY) - otherwise it's gonna be slow....
     t1 = time.clock()
     ds, layer = open(cstr, layername, layersql, extent)
     if extent is not None:
@@ -182,8 +200,7 @@ def get_geometries(cstr, layername=None, layersql=None, extent=None, explode=Tru
     nf = layer.GetFeatureCount()
     print("%d feature(s) in layer %s" % (nf, layer.GetName()))
     geoms = []
-    for i in xrange(nf):
-        feature = layer.GetNextFeature()
+    for feature in layer:
         geom = feature.GetGeometryRef().Clone()
         # Handle multigeometries here...
         t = geom.GetGeometryType()
