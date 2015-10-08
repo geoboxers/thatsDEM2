@@ -88,41 +88,39 @@ def get_extent(georef, shape):
         georef[3])  # x1,y1,x2,y2
     return extent
 
-
 # Example of burning vector layer from a shape file into a raster with
-# same georeference as an existing image:
+# same georeference as an existing image (assuming that projections match!)
 # ds = gdal.Open("myraster.tif")
 #
 # burn_vector_layer("myfile.shp", ds.GetGeoTransform(),
-#  (ds.RasterYSize,ds.RasterXSize), attr ="MyAttr", dtype = np.int32,
-# , osr.SpatialReference(ds.GetProjection()))
-# Will warp input geometries on the fly to output projection!
+#  (ds.RasterYSize,ds.RasterXSize), attr ="MyAttr", dtype = np.int32)
+
 
 def burn_vector_layer(cstr, georef, shape, layername=None, layersql=None,
                       attr=None, nd_val=0, dtype=np.bool, all_touched=True,
-                      burn3d=False, output_srs=None):
+                      burn3d=False):
     """
     Burn a vector layer. Will use vector_io.open to fetch the layer.
     Layer can be specified by layersql or layername (else first layer).
     Burn 'mode' defaults to a 'mask', but can be also set by an attr or
     as z-value for 3d geoms.
+    For now, input georeference should be in the same coordinate system as layer.
     Args:
         cstr: OGR connection string
         georef: GDAL style georef, as returned by ds.GetGeoTransform()
         shape: Numpy shape of output raster (nrows,ncols)
         ...
-        output_srs: osr.SpatialReference, if None will assumme matching
-                    coordinate systems.
+        
     Returns:
         A numpy array of the requested dtype and shape.
     """
     # input a GDAL-style georef
     # If executing fancy sql like selecting buffers etc, be sure to add a
     # where ST_Intersects(geom,TILE_POLY) - otherwise its gonna be slow....
-    extent = get_extent(georef, shape)
+    extent = get_extent(georef, shape) #this is in the output projection! 
     ds, layer = open(cstr, layername, layersql, extent)
     A = just_burn_layer(layer, georef, shape, attr, nd_val, dtype, all_touched,
-                        burn3d, output_srs)
+                        burn3d)
     if layersql is not None:
         ds.ReleaseResultSet(layer)
     layer = None
@@ -131,31 +129,27 @@ def burn_vector_layer(cstr, georef, shape, layername=None, layersql=None,
 
 
 def just_burn_layer(layer, georef, shape, attr=None, nd_val=0,
-                    dtype=np.bool, all_touched=True, burn3d=False,
-                    output_srs=None):
+                    dtype=np.bool, all_touched=True, burn3d=False):
     """
     Burn a vector layer. Similar to vector_io.burn_vector_layer
     except that the layer is given directly in args.
+    For now, input georeference should be in the same coordinate system as layer.
     Returns:
         A numpy array of the requested dtype and shape.
     """
     if burn3d and attr is not None:
         raise ValueError("burn3d and attr can not both be set")
     extent = get_extent(georef, shape)
-    layer.SetSpatialFilterRect(*extent)
+    layer.SetSpatialFilterRect(*extent)  # This is not done (yet) by GDAL, I believe...
     mem_driver = gdal.GetDriverByName("MEM")
     gdal_type = nptype2gdal(dtype)
     mask_ds = mem_driver.Create("dummy", int(shape[1]), int(shape[0]), 1, gdal_type)
     mask_ds.SetGeoTransform(georef)
     mask = np.ones(shape, dtype=dtype) * nd_val
     mask_ds.GetRasterBand(1).WriteArray(mask)  # write nd_val to output
-
-    if output_srs is not None:
-        # If output_srs is given, this takes precedence
-        srs = output_srs
-    else:
-        # Use same coord sys
-        srs = layer.GetSpatialRef()
+    # Don't wanna messup too much
+    # so assmume matching coordiante systems for now
+    srs = layer.GetSpatialRef()
     if srs is not None:
         mask_ds.SetProjection(srs.ExportToWkt())
     options = []
