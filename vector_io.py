@@ -12,9 +12,9 @@
 # ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
 # OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 #
-#########################
-# Stuff to read / burn vector layers
-#########################
+"""
+ Stuff to read / burn vector layers
+"""
 
 from osgeo import ogr, osr, gdal
 import numpy as np
@@ -25,14 +25,14 @@ import time
 EXTENT_WKT = "WKT_EXT"
 
 
-def open(cstr, layername=None, layersql=None, extent=None, a_srs=None, sql_dialect=None):
+def open(cstr, layername=None, layersql=None, extent=None, sql_dialect=None):
     """
     Common opener of an OGR datasource. Use either layername or layersql.
     The layersql argument takes precedence over a layername arg.
     Will directly modify layersql to make the data provider
     do the filtering by extent if using the WKT_EXT token.
     If the extent (xmin,ymin,xmax,ymax) is in a different coord. sys
-    than the layer, the layersql should be intelligent enough to handle 
+    than the layer, the layersql should be intelligent enough to handle
     this, e.g. by using st_transform.
     Returns:
         OGR datasource ,  OGR layer
@@ -44,7 +44,8 @@ def open(cstr, layername=None, layersql=None, extent=None, a_srs=None, sql_diale
         if extent is not None and EXTENT_WKT in layersql:
             wkt = "'"+extent_to_wkt(extent)+"'"
             layersql = layersql.replace(EXTENT_WKT, wkt)
-        # restrict to ASCII encodable chars here - don't know what the datasource
+        # restrict to ASCII encodable chars here -
+        # don't know what the datasource
         # is precisely and ogr doesn't like unicode.
         layer = ds.ExecuteSQL(str(layersql), dialect=sql_dialect)
     elif layername is not None:  # then a layername
@@ -52,9 +53,7 @@ def open(cstr, layername=None, layersql=None, extent=None, a_srs=None, sql_diale
     else:  # fallback - shapefiles etc, use first layer
         layer = ds.GetLayer(0)
     assert(layer is not None)
-    if a_srs is not None:
-        # Simple assign the spatial reference, no reprojection done
-        layer.SetSpatialRef(a_srs)
+
     return ds, layer
 
 
@@ -187,10 +186,10 @@ def just_burn_layer(layer, georef, shape, attr=None, nd_val=0,
     mask_ds.SetGeoTransform(georef)
     mask = np.ones(shape, dtype=dtype) * nd_val
     mask_ds.GetRasterBand(1).WriteArray(mask)  # write nd_val to output
-    
+
     if output_srs is not None:
         mask_ds.SetProjection(output_srs.ExportToWkt())
-    
+
     options = []
     if all_touched:
         options.append('ALL_TOUCHED=TRUE')
@@ -264,7 +263,7 @@ def get_geometries(cstr, layername=None, layersql=None, extent=None, explode=Tru
 def get_features(cstr, layername=None, layersql=None, extent=None, set_filter=True):
     """
     Use vector_io.open to fetch a layer and read all features.
-    If supplied, and set_filter is True, 
+    If supplied, and set_filter is True,
     the extent (xmin,ymin,xmax,ymax) should be in the same coordinate system
     as layer.
     Returns:
