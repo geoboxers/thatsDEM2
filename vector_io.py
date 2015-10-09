@@ -16,7 +16,7 @@
 # Stuff to read / burn vector layers
 #########################
 
-from osgeo import ogr, gdal
+from osgeo import ogr, osr, gdal
 import numpy as np
 import time
 
@@ -25,11 +25,15 @@ import time
 EXTENT_WKT = "WKT_EXT"
 
 
-def open(cstr, layername=None, layersql=None, extent=None):
+def open(cstr, layername=None, layersql=None, extent=None, a_srs=None, sql_dialect=None):
     """
     Common opener of an OGR datasource. Use either layername or layersql.
+    The layersql argument takes precedence over a layername arg.
     Will directly modify layersql to make the data provider
     do the filtering by extent if using the WKT_EXT token.
+    If the extent (xmin,ymin,xmax,ymax) is in a different coord. sys
+    than the layer, the layersql should be intelligent enough to handle 
+    this, e.g. by using st_transform.
     Returns:
         OGR datasource ,  OGR layer
     """
@@ -38,25 +42,35 @@ def open(cstr, layername=None, layersql=None, extent=None):
         raise Exception("Failed to open " + cstr)
     if layersql is not None:  # an sql statement will take precedence
         if extent is not None and EXTENT_WKT in layersql:
-            wkt = "'POLYGON(("
-            for dx, dy in ((0, 0), (0, 1), (1, 1), (1, 0)):
-                wkt += "{0} {1},".format(str(extent[2 * dx]), str(extent[2 * dy + 1]))
-            wkt += "{0} {1}))'".format(str(extent[0]), str(extent[1]))
+            wkt = "'"+extent_to_wkt(extent)+"'"
             layersql = layersql.replace(EXTENT_WKT, wkt)
         # restrict to ASCII encodable chars here - don't know what the datasource
         # is precisely and ogr doesn't like unicode.
-        layer = ds.ExecuteSQL(str(layersql))
+        layer = ds.ExecuteSQL(str(layersql), dialect=sql_dialect)
     elif layername is not None:  # then a layername
         layer = ds.GetLayerByName(layername)
     else:  # fallback - shapefiles etc, use first layer
         layer = ds.GetLayer(0)
     assert(layer is not None)
+    if a_srs is not None:
+        # Simple assign the spatial reference, no reprojection done
+        layer.SetSpatialRef(a_srs)
     return ds, layer
+
+
+def extent_to_wkt(extent):
+    """Create a Polygon WKT geometry from extent: (xmin, ymin, xmax, ymax)"""
+    wkt = "POLYGON(("
+    for dx, dy in ((0, 0), (0, 1), (1, 1), (1, 0)):
+        wkt += "{0} {1},".format(str(extent[2 * dx]), str(extent[2 * dy + 1]))
+    wkt += "{0} {1}))".format(str(extent[0]), str(extent[1]))
+    return wkt
 
 
 def nptype2gdal(dtype):
     """
-    Translate a numpy datatype to a corresponding GDAL datatype (similar to mappings internal in GDAL/OGR)
+    Translate a numpy datatype to a corresponding
+    GDAL datatype (similar to mappings internal in GDAL/OGR)
     Arg:
         A numpy datatype
     Returns:
@@ -93,34 +107,59 @@ def get_extent(georef, shape):
 # ds = gdal.Open("myraster.tif")
 #
 # burn_vector_layer("myfile.shp", ds.GetGeoTransform(),
-#  (ds.RasterYSize,ds.RasterXSize), attr ="MyAttr", dtype = np.int32)
+#                    (ds.RasterYSize,ds.RasterXSize), attr="MyAttr",
+#                     dtype=np.int32, osr.SpatialReference(ds.GetProjection))
 
 
 def burn_vector_layer(cstr, georef, shape, layername=None, layersql=None,
                       attr=None, nd_val=0, dtype=np.bool, all_touched=True,
-                      burn3d=False):
+                      burn3d=False, output_srs=None):
     """
     Burn a vector layer. Will use vector_io.open to fetch the layer.
     Layer can be specified by layersql or layername (else first layer).
     Burn 'mode' defaults to a 'mask', but can be also set by an attr or
     as z-value for 3d geoms.
-    For now, input georeference should be in the same coordinate system as layer.
+
+    When the output_srs differs from the projection of the layer, and
+    layersql is used to provide filtering on the dataprovider side, the
+    layersql should be intelligent enough to handle the 'extent' input
+    which will be the grid extent. E.g. by using st_transform.
+
+    Will (always - for now) set a client side spatial filter
+    on the layer corresponding to grid extent.
     Args:
         cstr: OGR connection string
         georef: GDAL style georef, as returned by ds.GetGeoTransform()
         shape: Numpy shape of output raster (nrows,ncols)
         ...
-        
+        output_srs: osr.SpatialReference instance - projection of output grid.
     Returns:
         A numpy array of the requested dtype and shape.
     """
     # input a GDAL-style georef
     # If executing fancy sql like selecting buffers etc, be sure to add a
     # where ST_Intersects(geom,TILE_POLY) - otherwise its gonna be slow....
-    extent = get_extent(georef, shape) #this is in the output projection! 
+    extent = get_extent(georef, shape)  # this is in the output projection!
     ds, layer = open(cstr, layername, layersql, extent)
+    input_srs = layer.GetSpatialRef()
+    if input_srs is None or output_srs is None:
+        is_same_proj = True
+    else:
+        is_same_proj = input_srs.IsSame(output_srs)
+    # The grid extent in as an ogr geometry (in output_srs)
+    geom = ogr.CreateGeometryFromWkt(extent_to_wkt(extent))
+    if not is_same_proj:
+        # This can only happen if both projections are set
+        transform = osr.CoordinateTransformation(output_srs, input_srs)
+        geom.Transform(transform)
+    # The client side filtering here can speed up things, and is not
+    # done by GDAL yet
+    # Should have no effect when the filtering is done by the dataprovider
+    # using layersql.
+    # TODO: remove this, when GDAL implements filtering for rasterize.
+    layer.SetSpatialFilter(geom)
     A = just_burn_layer(layer, georef, shape, attr, nd_val, dtype, all_touched,
-                        burn3d)
+                        burn3d, output_srs)
     if layersql is not None:
         ds.ReleaseResultSet(layer)
     layer = None
@@ -129,29 +168,29 @@ def burn_vector_layer(cstr, georef, shape, layername=None, layersql=None,
 
 
 def just_burn_layer(layer, georef, shape, attr=None, nd_val=0,
-                    dtype=np.bool, all_touched=True, burn3d=False):
+                    dtype=np.bool, all_touched=True, burn3d=False,
+                    output_srs=None):
     """
-    Burn a vector layer. Similar to vector_io.burn_vector_layer
-    except that the layer is given directly in args.
-    For now, input georeference should be in the same coordinate system as layer.
+    Burn a vector layer. See documentation for burn_vector_layer.
+    It is the callers responsibility to supply a properly filtered layer,
+    e.g. by setting a client side spatial filter, or by using a dataprovider
+    side filter, e.g. in layersql.
     Returns:
         A numpy array of the requested dtype and shape.
     """
     if burn3d and attr is not None:
         raise ValueError("burn3d and attr can not both be set")
-    extent = get_extent(georef, shape)
-    layer.SetSpatialFilterRect(*extent)  # This is not done (yet) by GDAL, I believe...
     mem_driver = gdal.GetDriverByName("MEM")
     gdal_type = nptype2gdal(dtype)
-    mask_ds = mem_driver.Create("dummy", int(shape[1]), int(shape[0]), 1, gdal_type)
+    mask_ds = mem_driver.Create("dummy",
+                                int(shape[1]), int(shape[0]), 1, gdal_type)
     mask_ds.SetGeoTransform(georef)
     mask = np.ones(shape, dtype=dtype) * nd_val
     mask_ds.GetRasterBand(1).WriteArray(mask)  # write nd_val to output
-    # Don't wanna messup too much
-    # so assmume matching coordiante systems for now
-    srs = layer.GetSpatialRef()
-    if srs is not None:
-        mask_ds.SetProjection(srs.ExportToWkt())
+    
+    if output_srs is not None:
+        mask_ds.SetProjection(output_srs.ExportToWkt())
+    
     options = []
     if all_touched:
         options.append('ALL_TOUCHED=TRUE')
@@ -173,15 +212,19 @@ def just_burn_layer(layer, georef, shape, attr=None, nd_val=0,
             burn_val = 0
         else:
             burn_val = 1
-        ok = gdal.RasterizeLayer(mask_ds, [1], layer, burn_values=[burn_val], options=options)
+        ok = gdal.RasterizeLayer(
+            mask_ds, [1], layer,
+            burn_values=[burn_val], options=options)
     A = mask_ds.ReadAsArray().astype(dtype)
     return A
 
 
-def get_geometries(cstr, layername=None, layersql=None, extent=None, explode=True):
+def get_geometries(cstr, layername=None, layersql=None, extent=None, explode=True, set_filter=True):
     """
     Use vector_io.open to fetch a layer,
-    read geometries and explode multi-geometries if explode=True
+    read geometries and explode multi-geometries if explode=True.
+    If supplied, and set_filter is True, the extent (xmin,ymin,xmax,ymax)
+    should be in the same coordinate system as layer.
     Returns:
         A list of OGR geometries.
     """
@@ -189,7 +232,10 @@ def get_geometries(cstr, layername=None, layersql=None, extent=None, explode=Tru
     # where ST_Intersects(geom,TILE_POLY) - otherwise it's gonna be slow....
     t1 = time.clock()
     ds, layer = open(cstr, layername, layersql, extent)
-    if extent is not None:
+    if extent is not None and set_filter:
+        # This assumes that the extent provided is in the same coordinate
+        # system as the layer!!!
+        # Not needed when filtering is taken care of in the layersql.
         layer.SetSpatialFilterRect(*extent)
     nf = layer.GetFeatureCount()
     print("%d feature(s) in layer %s" % (nf, layer.GetName()))
@@ -215,15 +261,21 @@ def get_geometries(cstr, layername=None, layersql=None, extent=None, explode=Tru
     return geoms
 
 
-def get_features(cstr, layername=None, layersql=None, extent=None):
+def get_features(cstr, layername=None, layersql=None, extent=None, set_filter=True):
     """
     Use vector_io.open to fetch a layer and read all features.
+    If supplied, and set_filter is True, 
+    the extent (xmin,ymin,xmax,ymax) should be in the same coordinate system
+    as layer.
     Returns:
         A list of OGR features.
     """
 
     ds, layer = open(cstr, layername, layersql, extent)
-    if extent is not None:
+    if extent is not None and set_filter:
+        # This assumes that the extent provided is in the same coordinate
+        # system as the layer!!!
+        # Not needed when filtering is taken care of in the layersql.
         layer.SetSpatialFilterRect(*extent)
     feats = [f for f in layer]
     if layersql is not None:
@@ -233,7 +285,7 @@ def get_features(cstr, layername=None, layersql=None, extent=None):
     return feats
 
 
-def polygonize(M, georef):
+def polygonize(M, georef, srs=None):
     """
     Polygonize a mask.
     Args:
@@ -249,14 +301,17 @@ def polygonize(M, georef):
     mem_driver = gdal.GetDriverByName("MEM")
     mask_ds = mem_driver.Create("dummy", int(M.shape[1]), int(M.shape[0]), 1, gdal.GDT_Byte)
     mask_ds.SetGeoTransform(georef)
+    if srs is not None:
+        mask_ds.SetProjection(srs.ExportToWkt())
     mask_ds.GetRasterBand(1).WriteArray(M)  # write zeros to output
     # Ok - so now polygonize that - use the mask as ehem... mask...
     m_drv = ogr.GetDriverByName("Memory")
     ds = m_drv.CreateDataSource("dummy")
-    lyr = ds.CreateLayer("polys", None, ogr.wkbPolygon)
+    lyr = ds.CreateLayer("polys", srs, ogr.wkbPolygon)
     fd = ogr.FieldDefn(dst_fieldname, ogr.OFTInteger)
     lyr.CreateField(fd)
     dst_field = 0
     gdal.Polygonize(mask_ds.GetRasterBand(1), mask_ds.GetRasterBand(1), lyr, dst_field)
     lyr.ResetReading()
     return ds, lyr
+
