@@ -66,12 +66,9 @@ def fromAny(path, **kwargs):
             pc = fromPatch(path, **kwargs)  # so we can look at patch-files...
         else:
             pc = fromOGR(path, **kwargs)
-    except Exception as e:
-        if temp_file is not None and os.path.exists(temp_file):
+    finally:
+        if temp_file is not None and os.path.isfile(temp_file):
             os.remove(temp_file)
-        raise e
-    if temp_file is not None and os.path.exists(temp_file):
-        os.remove(temp_file)
     return pc
 
 
@@ -248,7 +245,7 @@ def empty_like(pc):
     Args:
         pc: Pointcloud.pointcloud object.
     Returns:
-        Pointcloud.pointcloud object.
+        Pointcloud object.
     """
     out = Pointcloud(np.empty((0, 2), dtype=np.float64), np.empty((0,), dtype=np.float64))
     for a in ["c", "pid", "rn"]:
@@ -259,7 +256,8 @@ def empty_like(pc):
 
 class Pointcloud(object):
     """
-    Pointcloud class constructed from a xy and a z array. Optionally also classification,point source id and return number integer arrays
+    Pointcloud class constructed from a xy and a z array. 
+    Optionally also classification,point source id and return number integer arrays
     """
 
     def __init__(self, xy, z, c=None, pid=None, rn=None):
