@@ -47,12 +47,17 @@ lib.get_triangle_geometry.argtypes = [
         dtype=np.float32, ndim=2, flags=[
             'C', 'O', 'A', 'W']), ctypes.c_int]
 lib.get_triangle_geometry.restype = None
+lib.get_normals.argtypes = [
+    XY_TYPE, Z_TYPE, LP_CINT, np.ctypeslib.ndpointer(
+        dtype=np.float64, ndim=2, flags=[
+            'C', 'O', 'A', 'W']), ctypes.c_int]
+lib.get_normals.restype=None
 lib.mark_bd_vertices.argtypes = [MASK_TYPE, MASK_TYPE, LP_CINT, MASK_TYPE, ctypes.c_int, ctypes.c_int]
 lib.mark_bd_vertices.restype = None
 # int fill_spatial_index(int *sorted_flat_indices, int *index, int npoints, int max_index)
 lib.fill_spatial_index.argtypes = [INT32_TYPE, INT32_TYPE, ctypes.c_int, ctypes.c_int]
 lib.fill_spatial_index.restype = ctypes.c_int
-STD_FILTER_ARGS = [
+STD_FILTER_ARGS = (
     XY_TYPE,
     XY_TYPE,
     Z_TYPE,
@@ -61,7 +66,18 @@ STD_FILTER_ARGS = [
     ctypes.c_double,
     INT32_TYPE,
     XY_TYPE,
-    ctypes.c_int]
+    ctypes.c_int)
+STD_FILTER_ARGS_3D = (
+    XY_TYPE,
+    Z_TYPE,
+    XY_TYPE,
+    Z_TYPE,
+    Z_TYPE,
+    ctypes.c_double,
+    ctypes.c_double,
+    INT32_TYPE,
+    XY_TYPE,
+    ctypes.c_int)
 lib.pc_min_filter.argtypes = STD_FILTER_ARGS
 lib.pc_min_filter.restype = None
 lib.pc_mean_filter.argtypes = STD_FILTER_ARGS
@@ -74,6 +90,10 @@ lib.pc_var_filter.argtypes = STD_FILTER_ARGS
 lib.pc_var_filter.restype = None
 lib.pc_distance_filter.argtypes = STD_FILTER_ARGS
 lib.pc_distance_filter.restype = None
+lib.pc_nearest_filter.argtypes = STD_FILTER_ARGS
+lib.pc_nearest_filter.restype = None
+lib.pc_ballcount_filter.argtypes = STD_FILTER_ARGS_3D
+lib.pc_ballcount_filter.restype = None
 lib.pc_density_filter.argtypes = [
     XY_TYPE,
     XY_TYPE,
@@ -92,6 +112,17 @@ lib.pc_spike_filter.argtypes = [
     Z_TYPE,
     ctypes.c_double,
     ctypes.c_double,
+    ctypes.c_double,
+    INT32_TYPE,
+    XY_TYPE,
+    ctypes.c_int]
+lib.pc_spike_filter.restype = None
+lib.pc_classi_filter.argtypes = [
+    XY_TYPE,
+    Z_TYPE,
+    XY_TYPE,
+    Z_TYPE,
+    Z_TYPE,
     ctypes.c_double,
     INT32_TYPE,
     XY_TYPE,
@@ -270,6 +301,21 @@ def get_triangle_geometry(xy, z, triangles, n_triangles):
     """
     out = np.empty((n_triangles, 3), dtype=np.float32)
     lib.get_triangle_geometry(xy, z, triangles, out, n_triangles)
+    return out
+
+def get_normals(xy, z, triangles, n_triangles):
+    """
+    Compute normals vectors for a triangulation.
+     Args:
+        xy: The vertices of the triangulation.
+        z: The z values of the vertices.
+        triangles: ctypes pointer to a c-contiguous int array of triangles, where each row contains the indices of the three vertices of a triangle.
+        n_triangles: The number of triangles (rows in triangle array== size /3)
+    Returns:
+        Numpy array of shape (n,3) containing the geometry numbers for each triangle in the triangulation.
+    """
+    out = np.ones((n_triangles, 3), dtype=np.float64)
+    lib.get_normals(xy, z, triangles, out, n_triangles)
     return out
 
 

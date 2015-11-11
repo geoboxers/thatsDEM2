@@ -17,6 +17,7 @@
 int p_in_poly(double *p_in, char *mout, double *verts, unsigned int np, unsigned int  *nv, unsigned int n_rings);
 void p_in_buf(double *p_in, char *mout, double *verts, unsigned long np, unsigned long nv, double d);
 void get_triangle_geometry(double *xy, double *z, int *triangles, float *out , int ntriangles);
+void get_normals(double *xy, double *z, int *triangles, double *out, int ntriangles);
 void fill_it_up(unsigned char *out, unsigned int *hmap, int rows, int cols, int stacks);
 void find_floating_voxels(int *lab,  int *out, int gcomp, int rows, int cols, int stacks);
 int fill_spatial_index(int *sorted_flat_indices, int *index, int npoints, int max_index);
@@ -28,6 +29,8 @@ void pc_median_filter(double *xy, double *pc_xy, double *pc_z, double *z_out, do
 void pc_idw_filter(double *xy, double *pc_xy, double *pc_z, double *z_out, double filter_rad, double nd_val, int *spatial_index, double *header, int npoints);
 void pc_var_filter(double *xy, double *pc_xy, double *pc_z, double *z_out, double filter_rad, double nd_val, int *spatial_index, double *header, int npoints);
 void pc_density_filter(double *xy, double *pc_xy, double *pc_z, double *z_out, double filter_rad, int *spatial_index, double *header, int npoints);
-void pc_density_filter(double *xy,double *pc_xy, double *pc_z, double *z_out, double filter_rad, int *spatial_index, double *header, int npoints);
+void pc_distance_filter(double *xy,double *pc_xy, double *pc_z, double *z_out, double filter_rad, double nd_val, int *spatial_index, double *header, int npoints);
+void pc_nearest_filter(double *xy,double *pc_xy, double *pc_z, double *z_out, double filter_rad, double nd_val, int *spatial_index, double *header, int npoints);
+void pc_ballcount_filter(double *xy,double *z,double *pc_xy,double *pc_z, double *out,double filter_rad,double nd_val,int *spatial_index,double *header,int npoints);
 void moving_bins(double *z, int *nout, double rad, int n);
 void binary_fill_gaps(char *M, char *out, int nrows, int ncols);

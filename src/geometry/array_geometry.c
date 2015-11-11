@@ -22,6 +22,7 @@
 #include <math.h>
 #include "array_geometry.h"
 #define DOT(x,y) (x[0]*y[0]+x[1]*y[1])
+#define DOT3(x,y) (x[0]*y[0]+x[1]*y[1]+x[2]*y[2])
 #define MIN(x,y)  ((x<y) ? x:y)
 #define MAX(a,b) (a>b ? a: b)
 #define MEPS (-1e-9)
@@ -43,6 +44,31 @@ static double mean_filter(double *xy, double z, int *indices, double *pc_xy, dou
 static double var_filter(double *xy, double z, int *indices, double *pc_xy, double *pc_z, double frad2, double nd_val, void *opt_params);
 static double density_filter(double *xy, double z, int *indices, double *pc_xy, double *pc_z, double frad2, double nd_val, void *opt_params);
 static double distance_filter(double *xy, double z, int *indices, double *pc_xy, double *pc_z, double frad2, double nd_val, void *opt_params);
+static double nearest_filter(double *xy, 
+                             double z, 
+                             int *indices, 
+                             double *pc_xy, 
+                             double *pc_z,  
+                             double frad2,
+                             double nd_val, 
+                             void *opt_params);
+static double ballcount_filter(double *xy,
+                               double z,
+                               int *indices,
+                               double *pc_xy,
+                               double *pc_z,
+                               double frad2,
+                               double nd_val,
+                               void *opt_params);
+static double classi_filter(double *xy, 
+                            double z, 
+                            int *indices, 
+                            double *pc_xy, 
+                            double *pc_z,  
+                            double frad2,
+                            double nd_val, 
+                            void *opt_params);
+                               
 static int compar (const void* a, const void* b);
 
 
@@ -188,6 +214,20 @@ static void compute_normal(double *p1, double *p2, double *p3,double z1, double 
 	n[2]=v1[0]*v2[1]-v1[1]*v2[0];
 }
 
+void get_normals(double *xy, double *z, int *triangles, double *out, int ntriangles){
+    int i;
+    double *p1,*p2,*p3,z1,z2,z3;
+	for(i=0;i<ntriangles;i++){
+		p1=xy+2*triangles[3*i];
+		p2=xy+2*triangles[3*i+1];
+		p3=xy+2*triangles[3*i+2];
+		z1=z[triangles[3*i]];
+		z2=z[triangles[3*i+1]];
+		z3=z[triangles[3*i+2]];
+		compute_normal(p1,p2,p3,z1,z2,z3,out+3*i);
+    }
+}
+
 void get_triangle_geometry(double *xy, double *z, int *triangles, float *out , int ntriangles){
 	int i;
 	double n[3],*p1,*p2,*p3,z1,z2,z3,x1,x2,y1,y2,zmax,zmin;
@@ -299,7 +339,18 @@ int fill_spatial_index(int *sorted_flat_indices, int *index, int npoints, int ma
 
 
 /* this will simply give us slices to boxes around the box of each pt. - the finer details are left to the filter func-*/
-static void apply_filter(double *xy, double *z, double *pc_xy, double *pc_z, double *vals_out, int *spatial_index, double *header,  int npoints, FILTER_FUNC filter_func,  double filter_rad, double nd_val, void *opt_params){
+static void apply_filter(double *xy, 
+                         double *z, 
+                         double *pc_xy, 
+                         double *pc_z, 
+                         double *vals_out, 
+                         int *spatial_index, 
+                         double *header,  
+                         int npoints, 
+                         FILTER_FUNC filter_func,  
+                         double filter_rad, 
+                         double nd_val, 
+                         void *opt_params){
 	int i,j, ind1,ind2, nfound, slices[6],r,c,r1,c1,c2,ncols,nrows;
 	double x1,y2,cs,zz, frad2;
 	ncols=(int) header[0];
@@ -310,6 +361,8 @@ static void apply_filter(double *xy, double *z, double *pc_xy, double *pc_z, dou
 	frad2=SQUARE(filter_rad);
 	/*unsigned long mf=0;*/
 	for(i=0; i<npoints; i++){
+        /*if (i%2==0)
+            printf("Done %d\n", i);*/
 		vals_out[i]=nd_val;
 		c=(int) ((xy[2*i]-x1)/cs);
 		r=(int) ((y2-xy[2*i+1])/cs);
@@ -380,7 +433,14 @@ static double min_filter(double *xy, double z, int *indices, double *pc_xy, doub
 /* A spike is a point, which is a local extrama, and where there are steep edges in all four quadrants. An edge is steep if its slope is above a certain limit and its delta z likewise*/
 /* all edges must be steep unless it is smaller than filter_radius*0.2 - so filter_radius is significant here!*/
 /* paarams are: tanv2 and  delta-z*/
-static double spike_filter(double *xy, double z,  int *indices, double *pc_xy, double *pc_z, double frad2, double nd_val, void *params){
+static double spike_filter(double *xy,
+                           double z,
+                           int *indices,
+                           double *pc_xy,
+                           double *pc_z,
+                           double frad2,
+                           double nd_val,
+                           void *params){
 	int i,i1,i2,j,n_steep=0, n_q1=0, n_q2=0, n_q3=0, n_q4=0, n_all_plus=0, n_all_minus=0, n_used=0, could_be_spike=1;
 	double d,dz,dx,dy,mean_dz=0, abs_dz,x=xy[0],y=xy[1],d_lim,slope,tanv2,zlim,*dparams;
 	dparams=(double*) params;
@@ -494,6 +554,31 @@ static double density_filter(double *xy, double z, int *indices, double *pc_xy, 
 	return ((double) n)/(M_PI*frad2);
 }
 
+/* Count number of points within a ball of radius frad2 */
+static double ballcount_filter(double *xy,
+                               double z,
+                               int *indices,
+                               double *pc_xy,
+                               double *pc_z,
+                               double frad2,
+                               double nd_val,
+                               void *opt_params){
+    int i,i1,i2,j,n=0;
+	double d;
+	for(i=0; i<3; i++){
+		i1=indices[2*i];
+		i2=indices[2*i+1];
+		for(j=i1;j<i2;j++){
+			d=SQUARE((pc_xy[2*j]-xy[0]))+SQUARE((pc_xy[2*j+1]-xy[1]))+SQUARE((pc_z[j]-z));
+			if (d<=frad2){
+				n+=1;
+			}
+			
+		}
+	}
+    return (double) n;
+}
+
 static double idw_filter(double *xy, double z, int *indices, double *pc_xy, double *pc_z, double frad2, double nd_val, void *opt_params){
 	int i,i1,i2,j,n=0;
 	double m=0,d,w=0,ww;
@@ -533,11 +618,117 @@ static double distance_filter(double *xy, double z, int *indices, double *pc_xy,
 	return (dmin<HUGE_VAL)?sqrt(dmin):nd_val;
 }
 
+/* returns index to nearest - TODO: extend so that index can be stored in opt_params.*/
+static double nearest_filter(double *xy, 
+                             double z, 
+                             int *indices, 
+                             double *pc_xy, 
+                             double *pc_z,  
+                             double frad2,
+                             double nd_val, 
+                             void *opt_params){
+    int i,i1,i2,j,n=0;
+	double dmin=HUGE_VAL,d, idx;
+    idx=nd_val;
+	for(i=0; i<3; i++){
+		i1=indices[2*i];
+		i2=indices[2*i+1];
+		for(j=i1;j<i2;j++){
+			d=SQUARE((pc_xy[2*j]-xy[0]))+SQUARE((pc_xy[2*j+1]-xy[1]));
+			if (d<dmin){
+				dmin=d;
+                idx = j; /*store index*/
+            }
+			
+		}
+	}
+	return idx;
+}
+                             
+/* returns index to nearest - TODO: extend so that index can be stored in opt_params.*/
+static double classi_filter(double *xy, 
+                            double z, 
+                            int *indices, 
+                            double *pc_xy, 
+                            double *pc_z,  
+                            double frad2,
+                            double nd_val, 
+                            void *opt_params){
+    int i1,i2,j,k,h, count=0, n_all;
+	double n[3],n1, n2, *vects, md=0;
+    n_all = indices[1]-indices[0]+indices[3]-indices[2]+indices[5]-indices[4];
+    vects = malloc(sizeof(double)*3*(n_all)*(n_all-1)/2);
+    if (!vects){
+        printf("Out of memory!");
+        return 0;
+    }
+    for(i1=0; i1<3; i1++){
+        for(j=indices[2*i1];j<indices[2*i1+1];j++){
+            /*consider making this more '3dish' by using z in selection!!*/
+            n1 = SQUARE((xy[0]-pc_xy[2*j]))+SQUARE((xy[1]-pc_xy[2*j+1]));
+            if (n1>frad2) 
+                continue;
+            /*same row*/
+            for(k=j+1; k<indices[2*i1+1]; k++){
+                n1 = SQUARE((xy[0]-pc_xy[2*k]))+SQUARE((xy[1]-pc_xy[2*k+1]));
+                if (n1>frad2) 
+                    continue;
+                compute_normal(xy,pc_xy+2*k,pc_xy+2*j,z,pc_z[k],pc_z[j],n);
+                n2 = SQUARE(n[0])+SQUARE(n[1])+SQUARE(n[2]);
+                if (n2>0.1*frad2){
+                    n1=sqrt(n2);
+                    /*printf("NORM: %.2f\n",nn);
+                    printf("j: %d, k: %d\n",j,k);*/
+                    for(h=0; h<3; h++){
+                        vects[3*count+h]=n[h]/n1;
+                    }
+                    count++;
+                }
+            }
+            /*next rows*/
+            for(i2=i1+1; i2<3; i2++){
+                for(k=indices[2*i2]; k<indices[2*i2+1]; k++){
+                    n1 = SQUARE((xy[0]-pc_xy[2*k]))+SQUARE((xy[1]-pc_xy[2*k+1]));
+                    if (n1>frad2) 
+                        continue;
+                     compute_normal(xy,pc_xy+2*k,pc_xy+2*j,z,pc_z[k],pc_z[j],n);
+                     n2 = SQUARE(n[0])+SQUARE(n[1])+SQUARE(n[2]);
+                     if (n2>0.1*frad2){
+                        n1=sqrt(n2);
+                        /*printf("NORM: %.2f\n",nn);
+                        printf("j: %d, k: %d\n",j,k);*/
+                        for(h=0; h<3; h++){
+                            vects[3*count+h]=n[h]/n1;
+                            
+                        }
+                        count++;
+                     }
+                }
+            }
+        }
+    }
+    if (count>1){
+        double dot;
+        for(j=0;j<count; j++){
+            /*printf("vects: %2f, %2f, %2f\n", vects[3*j],vects[3*j+1],vects[3*j+2]);*/
+            for(k=j+1;k<count;k++){
+                dot=ABS(DOT3((vects+3*j),(vects+3*k)));
+                /*printf("dot: %.3f\n",dot);*/
+                md+=(1-dot);
+            }
+        }
+        md/=count*(count-1)/2;
+    }
+    free(vects);
+    return (count>1)?md:-1;
+    
+}
+
 static int compar (const void* a, const void* b){
 	if ( *(double*)a <  *(double*)b ) return -1;
 	if ( *(double*)a == *(double*)b ) return 0;
-	if ( *(double*)a >  *(double*)b ) return 1;
-};
+	return 1;
+}
 
 
 
@@ -577,9 +768,8 @@ static double median_filter(double *xy, double z, int *indices, double *pc_xy, d
 	
 	
 
-/* TODO: consider using a single wrapper with a "string" selector.
+/* TODO: consider using a single wrapper with a "string" selector.*/
 
-/*static void apply_filter(double *xy, double *z, double *pc_xy, double *pc_z, double *vals_out, int *spatial_index, double *header,  int npoints, FILTER_FUNC filter_func,  double filter_rad, double nd_val, void *opt_params)*/
 void pc_min_filter(double *xy, double *pc_xy, double *pc_z, double *z_out, double filter_rad, double nd_val, int *spatial_index, double *header, int npoints){
 	apply_filter(xy,NULL,pc_xy, pc_z, z_out, spatial_index, header, npoints, min_filter, filter_rad, nd_val, NULL); 
 }
@@ -612,10 +802,54 @@ void pc_idw_filter(double *xy, double *pc_xy, double *pc_z, double *z_out, doubl
 	apply_filter(xy,NULL,pc_xy,pc_z, z_out, spatial_index, header, npoints, idw_filter, filter_rad, nd_val , NULL); /*nd val meaningless - should always be at least one point in sr*/
 }
 
-void pc_distance_filter(double *xy, double *pc_xy, double *pc_z, double *z_out, double filter_rad, double nd_val, int *spatial_index, double *header, int npoints){
+void pc_distance_filter(double *xy, 
+                        double *pc_xy,
+                        double *pc_z, 
+                        double *z_out, 
+                        double filter_rad, 
+                        double nd_val, 
+                        int *spatial_index, 
+                        double *header, 
+                        int npoints){
 	apply_filter(xy,NULL,pc_xy,pc_z, z_out, spatial_index, header, npoints, distance_filter, filter_rad, nd_val , NULL); /*nd val meaningless - should always be at least one point in sr*/
 }
 
+void pc_nearest_filter(double *xy, 
+                       double *pc_xy, 
+                       double *pc_z, 
+                       double *idx_out, 
+                       double filter_rad, 
+                       double nd_val, 
+                       int *spatial_index, 
+                       double *header, 
+                       int npoints){
+	apply_filter(xy,NULL,pc_xy,pc_z, idx_out, spatial_index, header, npoints, nearest_filter, filter_rad, nd_val , NULL); 
+}
+
+void pc_ballcount_filter(double *xy,
+                         double *z,  
+                         double *pc_xy, 
+                         double *pc_z, 
+                         double *out, 
+                         double filter_rad, 
+                         double nd_val, 
+                         int *spatial_index, 
+                         double *header, 
+                         int npoints){
+	apply_filter(xy, z, pc_xy, pc_z, out, spatial_index,header, npoints, ballcount_filter, filter_rad, nd_val , NULL);
+}
+
+void pc_classi_filter(double *xy,
+                      double *z,  
+                      double *pc_xy, 
+                      double *pc_z, 
+                      double *out, 
+                      double filter_rad, 
+                      int *spatial_index, 
+                      double *header, 
+                      int npoints){
+	apply_filter(xy, z, pc_xy, pc_z, out, spatial_index,header, npoints, classi_filter, filter_rad, 0, NULL);
+}
 /* A triangle based 'filter' - on  input zout should be a copy of z */
 
 void tri_filter_low(double *z, double *zout, int *tri, double cut_off, int ntri){

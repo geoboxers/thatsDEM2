@@ -343,7 +343,7 @@ class Triangulation(TriangulationBase):
 class PolygonTriangulation(TriangulationBase):
     """TriangulationBase implementation. Triangulate a polygon."""
 
-    def __init__(self, outer, holes=[], cs=-1):  # low cs will speed up point in polygon
+    def __init__(self, outer, holes=None, inner_xy = None, cs=-1):  # low cs will speed up point in polygon
         # first element in arr_list is outer ring, rest is holes - GEOS rings tend
         # to be closed, duplicate first pt. we dont need that.
         if (outer[0, :] == outer[-1, :]).all():
@@ -354,24 +354,28 @@ class PolygonTriangulation(TriangulationBase):
         self.segments[:-1, 1] = np.arange(1, self.points.shape[0])
         self.segments[-1, 1] = 0
         hole_centers = []
-        for arr in holes:
-            #modify in place
-            if (arr[0, :] == arr[-1, :]).all():
-                arr = arr[:-1]
-            hole_centers.append(arr.mean(axis=0))
-            segments = np.zeros((arr.shape[0], 2), dtype=np.int32)
-            segments[:, 0] = np.arange(self.points.shape[0], self.points.shape[0] + arr.shape[0])
-            segments[:-1, 1] = np.arange(self.points.shape[0] + 1, self.points.shape[0] + arr.shape[0])
-            segments[-1, 1] = self.points.shape[0]
-            self.points = np.vstack((self.points, arr))
-            self.segments = np.vstack((self.segments, segments))
-        if len(holes) > 0:
+        if holes is not None:
+            for arr in holes:
+                #modify in place
+                if (arr[0, :] == arr[-1, :]).all():
+                    arr = arr[:-1]
+                hole_centers.append(arr.mean(axis=0))
+                segments = np.zeros((arr.shape[0], 2), dtype=np.int32)
+                segments[:, 0] = np.arange(self.points.shape[0], self.points.shape[0] + arr.shape[0])
+                segments[:-1, 1] = np.arange(self.points.shape[0] + 1, self.points.shape[0] + arr.shape[0])
+                segments[-1, 1] = self.points.shape[0]
+                self.points = np.vstack((self.points, arr))
+                self.segments = np.vstack((self.segments, segments))
             self.holes = np.asarray(hole_centers, dtype=np.float64)
             assert(self.holes.shape == (len(holes), 2))
             p_holes = self.holes.ctypes.data_as(LP_CDOUBLE)
+            n_holes = len(holes)
         else:
             self.holes = None
             p_holes = None
+            n_holes = 0
+        if inner_xy is not None:
+            self.points=np.vstack((self.points,inner_xy))
         self.segments = np.require(self.segments, dtype=np.int32, requirements=['A', 'O', 'C'])
         self.points = np.require(self.points, dtype=np.float64, requirements=['A', 'O', 'C'])
         self.holes = np.require(self.holes, dtype=np.float64, requirements=['A', 'O', 'C'])
@@ -380,13 +384,14 @@ class PolygonTriangulation(TriangulationBase):
         # print self.points
         # print self.segments
         # print self.holes
+        
         self.vertices = lib.use_triangle_pslg(
             self.points.ctypes.data_as(LP_CDOUBLE),
             self.segments.ctypes.data_as(LP_CINT),
             p_holes,
             self.points.shape[0],
             self.segments.shape[0],
-            len(holes),
+            n_holes,
             ctypes.byref(nt))
         self.ntrig = nt.value
         self.index = lib.build_index(
@@ -409,11 +414,13 @@ def test_pslg():
     matplotlib.use("Qt4Agg")
     import matplotlib.pyplot as plt
     outer = np.asarray(((-1, -1), (1, -1), (1, 1), (-1, 1)), dtype=np.float64)
+    add_xy =np.random.rand(100,2)*3-(1,1)
     hole = outer * 0.5
-    tri = PolygonTriangulation(outer, [hole])
+    tri = PolygonTriangulation(outer, [hole], add_xy=add_xy)
     T = tri.get_triangles()
     plt.figure()
     plt.triplot(tri.points[:, 0], tri.points[:, 1], T)
+    plt.scatter(add_xy[:,0],add_xy[:,1])
     plt.show()
 
 

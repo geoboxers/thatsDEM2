@@ -1074,7 +1074,7 @@ class Pointcloud(object):
             xy.shape[0])
         return z_out
 
-    def distance_filter(self, filter_rad, xy=None, nd_val=9999):
+    def distance_filter(self, filter_rad, xy, nd_val=9999):
         """
         Calculate point distance filter along self.xy or a supplied set of input points (which should really be supplied for this to make sense). Useful for gridding.
         Args:
@@ -1084,8 +1084,6 @@ class Pointcloud(object):
             1D array of filtered values.
         """
         self.validate_filter_args(filter_rad)
-        if xy is None:
-            xy = self.xy
         z_out = np.zeros((xy.shape[0],), dtype=np.float64)
         array_geometry.lib.pc_distance_filter(
             xy,
@@ -1099,6 +1097,29 @@ class Pointcloud(object):
             xy.shape[0])
         return z_out
 
+    def nearest_filter(self, filter_rad, xy, nd_val=-1):
+        """
+        Calculate index of nearest point along a supplied set of input points.
+        Args:
+            filter_rad: The radius of the filter. Should not be larger than cell size in spatial index (for now).
+            xy: Optional list of input points to filter along. Supply this or get a lot of zeros!
+        Returns:
+            1D array of filtered values.
+        """
+        self.validate_filter_args(filter_rad)
+        idx_out = np.zeros((xy.shape[0],), dtype=np.float64)
+        array_geometry.lib.pc_nearest_filter(
+            xy,
+            self.xy,
+            self.z,
+            idx_out,
+            filter_rad,
+            nd_val,
+            self.spatial_index,
+            self.index_header,
+            xy.shape[0])
+        return idx_out.astype(np.int32)
+        
     def density_filter(self, filter_rad, xy=None):
         """
         Calculate point density filter along self.xy or a supplied set of input points. Useful for gridding.
@@ -1147,7 +1168,78 @@ class Pointcloud(object):
             self.index_header,
             xy.shape[0])
         return z_out
+    def density_filter(self, filter_rad, xy=None):
+        """
+        Calculate point density filter along self.xy or a supplied set of input points. Useful for gridding.
+        Args:
+            filter_rad: The radius of the filter. Should not be larger than cell size in spatial index (for now).
+            xy: Optional list of input points to filter along. Will use self.xy if not supplied.
+        Returns:
+            1D array of filtered values.
+        """
+        self.validate_filter_args(filter_rad)
+        if xy is None:
+            xy = self.xy
+        z_out = np.zeros((xy.shape[0],), dtype=np.float64)
+        array_geometry.lib.pc_density_filter(
+            xy,
+            self.xy,
+            self.z,
+            z_out,
+            filter_rad,
+            self.spatial_index,
+            self.index_header,
+            xy.shape[0])
+        return z_out
 
+    def ballcount_filter(self, filter_rad, xy=None, z=None, nd_val=0):
+        """
+        Calculate number of points within a ball a radius filter_rad
+        Args:
+            filter_rad: The radius of the filter. Should not be larger than cell size in spatial index (for now).
+            xy: array of input points to filter along. Will use self.xy if not supplied.
+            z : array of input zs. Will use self.z if not supplied.
+        Returns:
+            1D array of counts.
+        """
+        self.validate_filter_args(filter_rad)
+        if xy is None or z is None:
+            assert xy is None and z is None
+            xy = self.xy
+            z = self.z
+        n_out = np.zeros((xy.shape[0],), dtype=np.float64)
+        array_geometry.lib.pc_ballcount_filter(
+            xy,
+            z,
+            self.xy,
+            self.z,
+            n_out,
+            filter_rad,
+            nd_val,
+            self.spatial_index,
+            self.index_header,
+            xy.shape[0])
+        return n_out
+    def classi_filter(self, filter_rad, xy=None, z=None):
+        """
+        """
+        self.validate_filter_args(filter_rad)
+        if xy is None or z is None:
+            assert xy is None and z is None
+            xy = self.xy
+            z = self.z
+        c_out = np.zeros((xy.shape[0],), dtype=np.float64)
+        array_geometry.lib.pc_classi_filter(
+            xy,
+            z,
+            self.xy,
+            self.z,
+            c_out,
+            filter_rad,
+            self.spatial_index,
+            self.index_header,
+            xy.shape[0])
+        return c_out
     def spike_filter(self, filter_rad, tanv2, zlim=0.2):
         """
         Calculate spike indicators (0 or 1) for each point . In order to be a spike there must be at least one other point within filter rad in each quadrant which satisfies:
@@ -1200,4 +1292,13 @@ def unit_test(path):
     z2 = pc2.min_filter(1)
     assert((z1 == z2).all())
     assert((z1 <= pc1.z).all())
+    del pc2
+    print("Checking 'nearest' filter")
+    idx = pc1.nearest_filter(1, pc1.xy)
+    should_be = np.arange(0,idx.shape[0], dtype=np.int32)
+    M= (idx!=should_be)
+    I = np.where(M)[0]
+    for i in I:
+        i2 = idx[i]
+        print pc1.xy[i], pc1.z[i], pc1.xy[i2], pc1.z[i2]
     return 0
