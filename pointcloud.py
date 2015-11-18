@@ -273,6 +273,7 @@ class Pointcloud(object):
         self.bbox = None  # [x1,y1,x2,y2]
         self.index_header = None
         self.spatial_index = None
+        self.sorting_indices = None
         # TODO: implement attribute handling nicer....
         self.pc_attrs = ["xy", "z", "c", "pid", "rn"]
 
@@ -898,7 +899,7 @@ class Pointcloud(object):
             np.float64)
         xyzcp.tofile(path)
 
-    def sort_spatially(self, cs, shape=None, xy_ul=None):
+    def sort_spatially(self, cs, shape=None, xy_ul=None, keep_sorting=False):
         """
         Primitive spatial sorting by creating a 'virtual' 2D grid covering the pointcloud and thus a 1D index by consecutive c style numbering of cells.
         Keep track of 'slices' of the pointcloud within each 'virtual' cell.
@@ -927,6 +928,9 @@ class Pointcloud(object):
         B = arr_coords[:, 1] * ncols + arr_coords[:, 0]
         I = np.argsort(B)
         B = B[I]
+        if keep_sorting:
+            self.sorting_indices = I
+       
         self.spatial_index = np.ones((ncols * nrows * 2,), dtype=np.int32) * -1
         res = array_geometry.lib.fill_spatial_index(B, self.spatial_index, B.shape[0], ncols * nrows)
         if res != 0:
@@ -937,6 +941,14 @@ class Pointcloud(object):
                 self.__dict__[a] = attr[I]
         self.index_header = np.asarray((ncols, nrows, x1, y2, cs), dtype=np.float64)
         return self
+    
+    def sort_back(self):
+        """If pc is sorted, sort it back...
+        """
+        if self.sorting_indices is not None:
+            return self.cut(self.sorting_indices[self.sorting_indices])
+        else:
+            raise ValueError("No sorting indices")
 
     def clear_derived_attrs(self):
         """
@@ -948,6 +960,7 @@ class Pointcloud(object):
         self.spatial_index = None
         self.bbox = None
         self.triangle_validity_mask = None
+        self.sorting_indices = None
     # Filterering methods below...
 
     def validate_filter_args(self, rad):
@@ -1220,8 +1233,16 @@ class Pointcloud(object):
             self.index_header,
             xy.shape[0])
         return n_out
-    def classi_filter(self, filter_rad, xy=None, z=None):
+    def ray_mean_dist_filter(self, filter_rad, xy=None, z=None):
         """
+        Calculate mean distance in real projective space,
+        of rays emanating from 'filter along' points.
+         Args:
+            filter_rad: The radius of the filter. Should not be larger than cell size in spatial index (for now).
+            xy: Points to filter along (optional).
+            z: Z coord of points to filter along (optional).
+        Returns:
+            1D array of spike indications (0 or 1).
         """
         self.validate_filter_args(filter_rad)
         if xy is None or z is None:
@@ -1229,7 +1250,7 @@ class Pointcloud(object):
             xy = self.xy
             z = self.z
         c_out = np.zeros((xy.shape[0],), dtype=np.float64)
-        array_geometry.lib.pc_classi_filter(
+        array_geometry.lib.pc_ray_mean_dist_filter(
             xy,
             z,
             self.xy,

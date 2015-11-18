@@ -117,7 +117,7 @@ lib.pc_spike_filter.argtypes = [
     XY_TYPE,
     ctypes.c_int]
 lib.pc_spike_filter.restype = None
-lib.pc_classi_filter.argtypes = [
+lib.pc_ray_mean_dist_filter.argtypes = [
     XY_TYPE,
     Z_TYPE,
     XY_TYPE,
@@ -127,7 +127,7 @@ lib.pc_classi_filter.argtypes = [
     INT32_TYPE,
     XY_TYPE,
     ctypes.c_int]
-lib.pc_spike_filter.restype = None
+lib.pc_ray_mean_dist_filter.restype = None
 # void pc_noise_filter(double *pc_xy, double *pc_z, double *z_out, double filter_rad, double zlim, double den_cut, int *spatial_index, double *header, int npoints);
 # binning
 # void moving_bins(double *z, int *nout, double rad, int n);

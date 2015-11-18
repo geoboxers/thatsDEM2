@@ -12,6 +12,9 @@ EXPORTS
     pc_var_filter
     pc_density_filter
     pc_distance_filter
+    pc_ballcount_filter
+    pc_ray_mean_dist_filter
+    get_normals
     tri_filter_low
     moving_bins
     fill_it_up

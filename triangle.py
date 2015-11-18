@@ -343,7 +343,12 @@ class Triangulation(TriangulationBase):
 class PolygonTriangulation(TriangulationBase):
     """TriangulationBase implementation. Triangulate a polygon."""
 
-    def __init__(self, outer, holes=None, inner_xy = None, cs=-1):  # low cs will speed up point in polygon
+    def __init__(self,
+                 outer,
+                 holes=None,
+                 inner_xy=None,
+                 breaklines=None,
+                 cs=-1):  # low cs will speed up point in polygon
         # first element in arr_list is outer ring, rest is holes - GEOS rings tend
         # to be closed, duplicate first pt. we dont need that.
         if (outer[0, :] == outer[-1, :]).all():
@@ -374,6 +379,10 @@ class PolygonTriangulation(TriangulationBase):
             self.holes = None
             p_holes = None
             n_holes = 0
+        if breaklines is not None:
+            i = self.points.shape[0]
+            self.points = np.vstack((self.points, breaklines))
+            self.segments = np.vstack((self.segments,(i,i+1)))
         if inner_xy is not None:
             self.points=np.vstack((self.points,inner_xy))
         self.segments = np.require(self.segments, dtype=np.int32, requirements=['A', 'O', 'C'])
@@ -416,11 +425,13 @@ def test_pslg():
     outer = np.asarray(((-1, -1), (1, -1), (1, 1), (-1, 1)), dtype=np.float64)
     add_xy =np.random.rand(100,2)*3-(1,1)
     hole = outer * 0.5
-    tri = PolygonTriangulation(outer, [hole], add_xy=add_xy)
+    breakline = np.asarray(((-0.75,0.9),(-0.75,-0.9)))
+    tri = PolygonTriangulation(outer, [hole], inner_xy=add_xy, breaklines= breakline)
     T = tri.get_triangles()
     plt.figure()
     plt.triplot(tri.points[:, 0], tri.points[:, 1], T)
     plt.scatter(add_xy[:,0],add_xy[:,1])
+    plt.scatter(tri.points[:,0], tri.points[:,1], c="red")
     plt.show()
 
 

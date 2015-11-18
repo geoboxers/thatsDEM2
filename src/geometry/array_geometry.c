@@ -60,7 +60,7 @@ static double ballcount_filter(double *xy,
                                double frad2,
                                double nd_val,
                                void *opt_params);
-static double classi_filter(double *xy, 
+static double ray_mean_dist_filter(double *xy, 
                             double z, 
                             int *indices, 
                             double *pc_xy, 
@@ -645,8 +645,8 @@ static double nearest_filter(double *xy,
 	return idx;
 }
                              
-/* returns index to nearest - TODO: extend so that index can be stored in opt_params.*/
-static double classi_filter(double *xy, 
+/* Calcs. mean 'distance' in RP2 of rays emanating from a point*/
+static double ray_mean_dist_filter(double *xy, 
                             double z, 
                             int *indices, 
                             double *pc_xy, 
@@ -712,6 +712,7 @@ static double classi_filter(double *xy,
         for(j=0;j<count; j++){
             /*printf("vects: %2f, %2f, %2f\n", vects[3*j],vects[3*j+1],vects[3*j+2]);*/
             for(k=j+1;k<count;k++){
+                /* project to RP2 by taking ABS*/
                 dot=ABS(DOT3((vects+3*j),(vects+3*k)));
                 /*printf("dot: %.3f\n",dot);*/
                 md+=(1-dot);
@@ -839,7 +840,7 @@ void pc_ballcount_filter(double *xy,
 	apply_filter(xy, z, pc_xy, pc_z, out, spatial_index,header, npoints, ballcount_filter, filter_rad, nd_val , NULL);
 }
 
-void pc_classi_filter(double *xy,
+void pc_ray_mean_dist_filter(double *xy,
                       double *z,  
                       double *pc_xy, 
                       double *pc_z, 
@@ -848,7 +849,7 @@ void pc_classi_filter(double *xy,
                       int *spatial_index, 
                       double *header, 
                       int npoints){
-	apply_filter(xy, z, pc_xy, pc_z, out, spatial_index,header, npoints, classi_filter, filter_rad, 0, NULL);
+	apply_filter(xy, z, pc_xy, pc_z, out, spatial_index,header, npoints, ray_mean_dist_filter, filter_rad, 0, NULL);
 }
 /* A triangle based 'filter' - on  input zout should be a copy of z */
 

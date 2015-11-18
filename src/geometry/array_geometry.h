@@ -32,5 +32,14 @@ void pc_density_filter(double *xy, double *pc_xy, double *pc_z, double *z_out, d
 void pc_distance_filter(double *xy,double *pc_xy, double *pc_z, double *z_out, double filter_rad, double nd_val, int *spatial_index, double *header, int npoints);
 void pc_nearest_filter(double *xy,double *pc_xy, double *pc_z, double *z_out, double filter_rad, double nd_val, int *spatial_index, double *header, int npoints);
 void pc_ballcount_filter(double *xy,double *z,double *pc_xy,double *pc_z, double *out,double filter_rad,double nd_val,int *spatial_index,double *header,int npoints);
+void pc_ray_mean_dist_filter(double *xy,
+                      double *z,  
+                      double *pc_xy, 
+                      double *pc_z, 
+                      double *out, 
+                      double filter_rad, 
+                      int *spatial_index, 
+                      double *header, 
+                      int npoints);
 void moving_bins(double *z, int *nout, double rad, int n);
 void binary_fill_gaps(char *M, char *out, int nrows, int ncols);
