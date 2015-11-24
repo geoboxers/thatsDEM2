@@ -24,13 +24,13 @@ from osgeo import gdal
 import triangle
 import slash
 # should perhaps not be done for the user behind the curtains?? Might copy data!
-from array_factory import point_factory, z_factory, int_array_factory
-import array_geometry
-import vector_io
+from thatsDEM.array_factory import point_factory, z_factory, int_array_factory
+import thatsDEM.array_geometry as array_geometry
+import thatsDEM.vector_io as vector_io
 # Should perhaps be moved to method in order to speed up import...
-import grid
+import thatsDEM.grid as grid
 from math import ceil
-import remote_files
+import thatsDEM.remote_files as remote_files
 
 
 def fromAny(path, **kwargs):

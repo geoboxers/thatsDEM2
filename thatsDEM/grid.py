@@ -25,7 +25,7 @@ except:
     HAS_NDIMAGE = False
 else:
     HAS_NDIMAGE = True
-LIBDIR = os.path.realpath(os.path.join(os.path.dirname(__file__), "lib"))
+LIBDIR = os.path.realpath(os.path.join(os.path.dirname(__file__), "..", "lib"))
 LIBNAME = "libgrid"
 XY_TYPE = np.ctypeslib.ndpointer(dtype=np.float64, flags=['C', 'O', 'A', 'W'])
 GRID_TYPE = np.ctypeslib.ndpointer(dtype=np.float64, ndim=2, flags=['C', 'O', 'A', 'W'])

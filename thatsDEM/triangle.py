@@ -17,7 +17,7 @@ import os
 import ctypes
 import time
 import numpy as np
-LIBDIR = os.path.realpath(os.path.join(os.path.dirname(__file__), "lib"))
+LIBDIR = os.path.realpath(os.path.join(os.path.dirname(__file__), "..", "lib"))
 
 LIBNAME = "libtripy"
 #'64' not appended to libname anymore
