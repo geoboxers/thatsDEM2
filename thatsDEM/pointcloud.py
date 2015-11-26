@@ -1,5 +1,5 @@
-# Copyright (c) 2015, Danish Geodata Agency <gst@gst.dk>
-#
+# Original work Copyright (c) 2015, Danish Geodata Agency <gst@gst.dk>
+# Modified work Copyright (c) 2015, Geoboxers <info@geoboxers.com>
 # Permission to use, copy, modify, and/or distribute this software for any
 # purpose with or without fee is hereby granted, provided that the above
 # copyright notice and this permission notice appear in all copies.
@@ -20,17 +20,31 @@
 import sys
 import os
 import numpy as np
+from math import ceil
 from osgeo import gdal
-import triangle
-import slash
-# should perhaps not be done for the user behind the curtains?? Might copy data!
-from thatsDEM.array_factory import point_factory, z_factory, int_array_factory
+import thatsDEM.triangle as triangle
 import thatsDEM.array_geometry as array_geometry
 import thatsDEM.vector_io as vector_io
 # Should perhaps be moved to method in order to speed up import...
 import thatsDEM.grid as grid
-from math import ceil
 import thatsDEM.remote_files as remote_files
+#Import las reader modules
+try:
+    import laspy.file
+except ImportError:
+    HAS_LASPY = True
+else:
+    HAS_LASPY = False
+try:
+    import slash
+except ImportError:
+    HAS_SLASH = False
+else:
+    HAS_SLASH = True
+
+    
+class InvalidArrayError(Exception):
+    pass
 
 
 def fromAny(path, **kwargs):
@@ -74,25 +88,20 @@ def fromAny(path, **kwargs):
 
 # read a las file and return a pointcloud - spatial selection by xy_box
 # (x1,y1,x2,y2) and / or z_box (z1,z2) and/or list of classes...
-def fromLAS(path, include_return_number=False, xy_box=None, z_box=None, cls=None, **kwargs):
+def fromLAS(path, include_return_number=False, **kwargs):
     """
     Load a pointcloud from las / laz format via slash.LasFile. Laz reading currently requires that laszip-cli is findable.
     Args:
         path: path to las / laz file.
         include_return_number: bool, indicates whether return number should be included.
-        xy_box: (x1,y2,x2,y2), filter by extent in load time. Will NOT work for laz files.
-        z_box: (z1,z2), filter by z-extent in load time. Will NOT work for laz files.
-        cls: list of classes to filter by in load time. Will NOT work for laz files.
     Returns:
         A pointcloud.Pointcloud object.
     """
-    plas = slash.LasFile(path)
-    # set filtering mask - will need to loop through twice...
-    if (xy_box is not None) or (z_box is not None) or (cls is not None):
-        plas.set_mask(xy_box, z_box, cls)
-    r = plas.read_records(return_ret_number=include_return_number)
-    plas.close()
-    return Pointcloud(r["xy"], r["z"], r["c"], r["pid"], r["rn"])  # or **r would look more fancy
+    if HAS_SLASH:
+        plas = slash.LasFile(path)
+        r = plas.read_records(return_ret_number=include_return_number)
+        plas.close()
+        return Pointcloud(r["xy"], r["z"], r["c"], r["pid"], r["rn"])
 
 
 def fromNpy(path, **kwargs):
@@ -248,66 +257,227 @@ def empty_like(pc):
         Pointcloud object.
     """
     out = Pointcloud(np.empty((0, 2), dtype=np.float64), np.empty((0,), dtype=np.float64))
-    for a in ["c", "pid", "rn"]:
-        if pc.__dict__[a] is not None:
-            out.__dict__[a] = np.empty((0,), dtype=np.int32)
+    for a in pc.attributes:
+        array = getattr(pc, a)
+        out.set_attribute(a, np.empty((0,), dtype=array.dtype))
     return out
 
 
 class Pointcloud(object):
     """
     Pointcloud class constructed from a xy and a z array. 
-    Optionally also classification,point source id and return number integer arrays
+    Additional properties given in pc_attrs must be 1d numpy arrays.
+    Pointcloud properties as well as xy and z will be directly modifiable by design,
+    for example like pc.xy += 1.35 and pc.c[pc.c == 4] = 5, 
+    but make sure you know what you're doing in order to keep consistency in sizes.
+    And note that if you do direct modifications like that, derived attributes like
+    triangulation, sorting and bounding box may be inconsistent - remember to clear
+    with Pointcloud.clear_derived_attrs()
     """
 
-    def __init__(self, xy, z, c=None, pid=None, rn=None):
-        self.xy = point_factory(xy)
-        self.z = z_factory(z)
+    def __init__(self, xy, z, **pc_attrs):
+        xy = self._validate_array("xy", xy, check_size=False)
+        z = self._validate_array("z", z, check_size=False)
         if z.shape[0] != xy.shape[0]:
             raise ValueError("z must have length equal to number of xy-points")
-        self.c = int_array_factory(c)
-        self.rn = int_array_factory(rn)
-        self.pid = int_array_factory(pid)
-        self.triangulation = None
-        self.triangle_validity_mask = None
-        self.bbox = None  # [x1,y1,x2,y2]
-        self.index_header = None
-        self.spatial_index = None
-        self.sorting_indices = None
-        # TODO: implement attribute handling nicer....
-        self.pc_attrs = ["xy", "z", "c", "pid", "rn"]
+        self.__pc_attrs = {"xy","z"}  # All pointcloudy arrays, including xy and z
+        self.xy = xy
+        self.z = z
+        # Derived attrs
+        self.clear_derived_attrs()
+        # store the additional attributes
+        for a in pc_attrs:
+            self.set_attribute(a, pc_attrs[a])
+            
+    def __setattr__(self, name, value):
+        """Try to keep consistency if pointcloud attributes are set directly"""
+        # By logic shortcut we can ALWAYS add a new attribute
+        # But we cannot add an attribute twice before __pc_attrs is defined!
+        if name in self.__dict__ and name in self.__pc_attrs:
+            try:
+                self._set_array(name, value, True)
+            except Exception as e:
+                raise InvalidArrayError(str(e))
+            
+        else:
+            object.__setattr__(self, name, value)
+                
+            
+    @property
+    def attributes(self):
+        """Return the attributes minus xy and z"""
+        return self.__pc_attrs.difference({"xy","z"})
+    
+    def set_attribute(self, name, value):
+        """
+        Set or add a an additional pointcloud attribute.
+        Args:
+            name: name of attribute
+            array: array like, must have dimension 1 and same size as self.
+        """
+        if name in ("xy","z"):
+            raise ValueError("Name of an additional attribute cannot be xy or z")
+        
+        self.set_array(name, value)
 
+    def _validate_array(self, name, value, check_size=True):
+        """Do the array checking stuff for all arrays:
+        xy, z as well as additional attributes"""
+   
+        value = np.asarray(value)
+        if name == "xy" or name == "z":
+            value = np.require(value, requirements=['A', 'O', 'C'], dtype=np.float64)
+        else:
+            value = np.require(value, requirements=['A', 'O', 'C'])
+        if check_size:
+            assert value.shape[0] == self.xy.shape[0]
+        if name != "xy":
+            assert value.ndim == 1
+        else:
+            assert value.ndim == 2
+       
+        return value
+    
+    def set_array(self, name, array):
+        """A method to do the array checking stuff and 
+        set array for all pointcloudy arrays, including xy and z"""
+        self._set_array(name, array, True)
+        
+    
+    def _set_array(self, name, array, size_check=False):
+        """Internal version of set array, with no size checks"""
+        # Unless someone tampers with __pc_attrs or deletes attributes,
+        # there should be consistency
+        # between names in __pc_attrs and attributes of self
+        array = self._validate_array(name, array, size_check)
+        self.__pc_attrs.add(name)
+        object.__setattr__(self, name, array)
+        
+    def get_array(self, name):
+        if name in self.__pc_attrs:
+            return self.__dict__[name]
+        raise ValueError("Pointcloud does not have %s attribute" % name)
+        
+    def remove_attribute(self, name):
+        if name in self.attributes:
+            delattr(self, name)
+            self.__pc_attrs.remove(name)
+        
+    def get_unique_attribute_values(self, name):
+        if name in self.attributes:
+            return np.unique(self.get_array(name))
+        raise ValueError("Pointcloud does not have %s attribute" % name)
+        
     def extend(self, other, least_common=False):
         """
         Extend the pointcloud 'in place' by adding another pointcloud. Attributtes of current pointcloud must be a subset of attributes of other.
         Args:
             other: A pointcloud.Pointcloud object
-            least_common: Not implemented.
+            least_common: Whether to restrict to least common set of attributes.
         Raises:
             ValueError: If other pointcloud does not have at least the same attributes as self.
         """
-        # Other must have at least as many attrs as this... rather than
-        # unexpectedly deleting attrs raise an exception, or what... time will
-        # tell what the proper implementation is...
         if not isinstance(other, Pointcloud):
             raise ValueError("Other argument must be a Pointcloud")
-        for a in self.pc_attrs:
-            if (self.__dict__[a] is not None) and (other.__dict__[a] is None):
-                if not least_common:
-                    raise ValueError(
-                        "Other pointcloud does not have attribute " +
-                        a +
-                        " which this has...")
-                else:
-                    self.__dict__[a] = None  # delete attr
-        # all is well and we continue - garbage collect previous deduced objects...
+        common = self.attributes.intersection(other.attributes)
+        additional = self.attributes.difference(common)
+        if len(additional)>0:
+            if not least_common:
+                raise ValueError("Other pointcloud does not have all attributes of self.")
+            # else delete additional
+            for a in additional:
+                self.remove_attribute(a)
         self.clear_derived_attrs()
-        for a in self.pc_attrs:
-            if self.__dict__[a] is not None:
-                self.__dict__[a] = np.require(
-                    np.concatenate(
-                        (self.__dict__[a], other.__dict__[a])), requirements=[
-                        'A', 'O', 'C'])
+        for a in self.__pc_attrs:
+           # Will not invoke __setattr__
+           self._set_array(a, np.concatenate((self.get_array(a), other.get_array(a))))
+                        
+    def thin(self, I):
+        """
+        Modify the pointcloud 'in place' by slicing to a mask or index array.
+        Args:
+            I: Mask, index array (1d) or slice to use for fancy numpy indexing.
+        """
+        #modify in place
+        self.clear_derived_attrs()
+        for a in self.__pc_attrs:
+            self._set_array(a, self.get_array(a)[I])
+
+    def cut(self, mask):
+        """
+        Cut the pointcloud by a mask or index array using fancy indexing.
+        Args:
+            mask: Mask or index array (1d) to use for fancy numpy indexing.
+        Returns:
+            The 'sliced' Pointcloud object.
+        """
+        if self.xy.size == 0:  # just return something empty to protect chained calls...
+            return empty_like(self)
+        pc = Pointcloud(self.xy[mask], self.z[mask])
+        for a in self.attributes:
+            pc.set_attribute(a, self.get_array(a)[mask])
+        return pc
+    
+    def sort_spatially(self, cs, shape=None, xy_ul=None, keep_sorting=False):
+        """
+        Primitive spatial sorting by creating a 'virtual' 2D grid covering the pointcloud and thus a 1D index by consecutive c style numbering of cells.
+        Keep track of 'slices' of the pointcloud within each 'virtual' cell.
+        As the pointcloud is reordered all derived attributes will be cleared.
+        Returns:
+            A reference to self.
+        """
+
+        if self.get_size() == 0:
+            raise Exception("No way to sort an empty pointcloud.")
+        if (bool(shape) != bool(xy_ul)):  # either both None or both given
+            raise ValueError("Neither or both of shape and xy_ul should be specified.")
+        self.clear_derived_attrs()
+        if shape is None:
+            x1, y1, x2, y2 = self.get_bounds()
+            ncols = int((x2 - x1) / cs) + 1
+            nrows = int((y2 - y1) / cs) + 1
+        else:
+            x1, y2 = xy_ul
+            nrows, ncols = shape
+        arr_coords = ((self.xy - (x1, y2)) / (cs, -cs)).astype(np.int32)
+        # do we cover the whole area?
+        mx, my = arr_coords.min(axis=0)
+        Mx, My = arr_coords.max(axis=0)
+        assert(min(mx, my) >= 0 and Mx < ncols and My < nrows)
+        B = arr_coords[:, 1] * ncols + arr_coords[:, 0]
+        I = np.argsort(B)
+        B = B[I]
+        self.thin(I)  # This will clear derived attrs
+        # fix attr setting order - call thin later...
+        self.spatial_index = np.ones((ncols * nrows * 2,), dtype=np.int32) * -1
+        res = array_geometry.lib.fill_spatial_index(B, self.spatial_index, B.shape[0], ncols * nrows)
+        if res != 0:
+            raise Exception("Size of spatial index array too small! Programming error!")
+        if keep_sorting:
+            self.sorting_indices = I
+        self.index_header = np.asarray((ncols, nrows, x1, y2, cs), dtype=np.float64)
+        return self
+    
+    def sort_back(self):
+        """If pc is sorted, sort it back... in place ....
+        """
+        if self.sorting_indices is not None:
+            I = np.argsort(self.sorting_indices)
+            self.thin(I)
+        else:
+            raise ValueError("No sorting indices")
+
+    def clear_derived_attrs(self):
+        """
+        Clear derived attributes which will change after an in place modification, like an extension.
+        """
+        # Clears attrs which become invalid by an extentsion or sorting
+        self.triangulation = None
+        self.index_header = None
+        self.spatial_index = None
+        self.bbox = None
+        self.triangle_validity_mask = None
+        self.sorting_indices = None
 
     def might_overlap(self, other):
         return self.might_intersect_box(other.get_bounds())
@@ -366,61 +536,6 @@ class Pointcloud(object):
         """Return point count."""
         return self.xy.shape[0]
 
-    def get_classes(self):
-        """Return the list of unique classes."""
-        if self.c is not None:
-            return np.unique(self.c)
-        else:
-            return []
-
-    def get_strips(self):
-        # just an alias
-        return self.get_pids()
-
-    def get_pids(self):
-        """Return the list of unique point source ids"""
-        if self.pid is not None:
-            return np.unique(self.pid)
-        else:
-            return []
-
-    def get_return_numbers(self):
-        """Return the list of unique return numbers (rn_min,...,rn_max)"""
-        if self.rn is not None:
-            return np.unique(self.rn)
-        else:
-            return []
-
-    def thin(self, I):
-        """
-        Modify the pointcloud 'in place' by slicing to a mask or index array.
-        Args:
-            I: Mask or index array (1d) to use for fancy numpy indexing.
-        """
-        #modify in place
-        self.clear_derived_attrs()
-        for a in self.pc_attrs:
-            attr = self.__dict__[a]
-            if attr is not None:
-                self.__dict__[a] = np.require(attr[I], requirements=['A', 'O', 'C'])
-
-    def cut(self, mask):
-        """
-        Cut the pointcloud by a mask or index array using fancy indexing.
-        Args:
-            mask: Mask or index array (1d) to use for fancy numpy indexing.
-        Returns:
-            The 'sliced' Pointcloud object.
-        """
-        if self.xy.size == 0:  # just return something empty to protect chained calls...
-            return empty_like(self)
-        pc = Pointcloud(self.xy[mask], self.z[mask])
-        for a in ["c", "pid", "rn"]:
-            attr = self.__dict__[a]
-            if attr is not None:
-                pc.__dict__[a] = attr[mask]
-        return pc
-
     def cut_to_polygon(self, rings):
         """
         Cut the pointcloud to a polygon.
@@ -477,51 +592,6 @@ class Pointcloud(object):
         MM = self.get_grid_mask(M, georef)
         return self.cut(MM)
 
-    def cut_to_class(self, c, exclude=False):
-        """
-        Cut the pointcloud to points of a specific class.
-        Args:
-            c: class (integer) or iterable of integers.
-            exclude: boolean indicating whether to use c as an exclusive list (cut to the complement).
-        Returns:
-            A new Pontcloud object.
-        Raises:
-            ValueError: if class attribute is not set.
-        """
-        # will now accept a list or another iterable...
-        if self.c is None:
-            raise ValueError("Class attribute not set.")
-        try:
-            cs = iter(c)
-        except:
-            cs = (c,)
-        if exclude:
-            I = np.ones((self.c.shape[0],), dtype=np.bool)
-        else:
-            I = np.zeros((self.c.shape[0],), dtype=np.bool)
-        # TODO: use inplace operations to speed up...
-        for this_c in cs:
-            if exclude:
-                I &= (self.c != this_c)
-            else:
-                I |= (self.c == this_c)
-        return self.cut(I)
-
-    def cut_to_return_number(self, rn):
-        """
-        Cut to points with return number rn (must have this attribute).
-        Args:
-            rn: return number to cut to.
-        Returns:
-            New Pointcloud object.
-        Raises:
-            ValueError: if no return numbers stored.
-        """
-        if self.rn is None:
-            raise ValueError("Return number attribute not set.")
-        I = (self.rn == rn)
-        return self.cut(I)
-
     def cut_to_z_interval(self, zmin, zmax):
         """
         Cut the pointcloud to points in a z interval.
@@ -532,21 +602,6 @@ class Pointcloud(object):
             New Pointcloud object
         """
         I = np.logical_and((self.z >= zmin), (self.z <= zmax))
-        return self.cut(I)
-
-    def cut_to_strip(self, id):
-        """
-        Cut the pointcloud to the points with a specific point source id.
-        Args:
-            id: The point source (strip) id to cut to.
-        Returns:
-            New Pointcloud object
-        Raises:
-            ValueError: If point source id attribute is not set.
-        """
-        if self.pid is None:
-            raise ValueError("Point source id attribute not set")
-        I = (self.pid == id)
         return self.cut(I)
 
     def triangulate(self):
@@ -696,7 +751,7 @@ class Pointcloud(object):
         """
         if self.triangulation is None:
             raise Exception("Create a triangulation first...")
-        xy_in = point_factory(xy_in)
+        xy_in = self._validate_array("xy", xy_in, False)
         #-2 indices signals outside triangulation, -1 signals invalid, else valid
         return self.triangulation.find_triangles(xy_in, mask)
 
@@ -749,7 +804,7 @@ class Pointcloud(object):
         """
         if self.triangulation is None:
             raise ValueError("Create a triangulation first...")
-        xy_in = point_factory(xy_in)
+        xy_in = self._validate_array("xy", xy_in, False)
         return self.triangulation.interpolate(self.z, xy_in, nd_val, mask)
     # Interpolates points in valid triangles
 
@@ -899,68 +954,7 @@ class Pointcloud(object):
             np.float64)
         xyzcp.tofile(path)
 
-    def sort_spatially(self, cs, shape=None, xy_ul=None, keep_sorting=False):
-        """
-        Primitive spatial sorting by creating a 'virtual' 2D grid covering the pointcloud and thus a 1D index by consecutive c style numbering of cells.
-        Keep track of 'slices' of the pointcloud within each 'virtual' cell.
-        As the pointcloud is reordered all derived attributes will be cleared.
-        Returns:
-            A reference to self.
-        """
-
-        if self.get_size() == 0:
-            raise Exception("No way to sort an empty pointcloud.")
-        if (bool(shape) != bool(xy_ul)):  # either both None or both given
-            raise ValueError("Neither or both of shape and xy_ul should be specified.")
-        self.clear_derived_attrs()
-        if shape is None:
-            x1, y1, x2, y2 = self.get_bounds()
-            ncols = int((x2 - x1) / cs) + 1
-            nrows = int((y2 - y1) / cs) + 1
-        else:
-            x1, y2 = xy_ul
-            nrows, ncols = shape
-        arr_coords = ((self.xy - (x1, y2)) / (cs, -cs)).astype(np.int32)
-        # do we cover the whole area?
-        mx, my = arr_coords.min(axis=0)
-        Mx, My = arr_coords.max(axis=0)
-        assert(min(mx, my) >= 0 and Mx < ncols and My < nrows)
-        B = arr_coords[:, 1] * ncols + arr_coords[:, 0]
-        I = np.argsort(B)
-        B = B[I]
-        if keep_sorting:
-            self.sorting_indices = I
-       
-        self.spatial_index = np.ones((ncols * nrows * 2,), dtype=np.int32) * -1
-        res = array_geometry.lib.fill_spatial_index(B, self.spatial_index, B.shape[0], ncols * nrows)
-        if res != 0:
-            raise Exception("Size of spatial index array too small! Programming error!")
-        for a in self.pc_attrs:
-            attr = self.__dict__[a]
-            if attr is not None:
-                self.__dict__[a] = attr[I]
-        self.index_header = np.asarray((ncols, nrows, x1, y2, cs), dtype=np.float64)
-        return self
     
-    def sort_back(self):
-        """If pc is sorted, sort it back...
-        """
-        if self.sorting_indices is not None:
-            return self.cut(self.sorting_indices[self.sorting_indices])
-        else:
-            raise ValueError("No sorting indices")
-
-    def clear_derived_attrs(self):
-        """
-        Clear derived attributes which will change after an in place modification, like an extension.
-        """
-        # Clears attrs which become invalid by an extentsion or sorting
-        self.triangulation = None
-        self.index_header = None
-        self.spatial_index = None
-        self.bbox = None
-        self.triangle_validity_mask = None
-        self.sorting_indices = None
     # Filterering methods below...
 
     def validate_filter_args(self, rad):
@@ -1233,6 +1227,7 @@ class Pointcloud(object):
             self.index_header,
             xy.shape[0])
         return n_out
+
     def ray_mean_dist_filter(self, filter_rad, xy=None, z=None):
         """
         Calculate mean distance in real projective space,
@@ -1261,6 +1256,7 @@ class Pointcloud(object):
             self.index_header,
             xy.shape[0])
         return c_out
+
     def spike_filter(self, filter_rad, tanv2, zlim=0.2):
         """
         Calculate spike indicators (0 or 1) for each point . In order to be a spike there must be at least one other point within filter rad in each quadrant which satisfies:
@@ -1290,6 +1286,96 @@ class Pointcloud(object):
             self.index_header,
             self.xy.shape[0])
         return z_out
+
+class LidarPointcloud(Pointcloud):
+    """
+    Subclass of pointcloud with special assumptions and shortcuts
+    designed for lidar pointclouds.
+    """
+    # The allowed attributes for a LidarPointcloud
+    LIDAR_ATTRS = frozenset(["c", "rn", "pid", "intensity"])
+    
+    def __init__(self, xy, z, **pc_attrs):
+        Pointcloud.__init__(self, xy, z, **pc_attrs)
+    
+    def cut_to_strip(self, pid):
+        """
+        Cut the pointcloud to the points with a specific point source id.
+        Args:
+            pid: The point source (strip) id to cut to.
+        Returns:
+            New Pointcloud object
+        Raises:
+            ValueError: If point source id attribute is not set.
+        """
+        if not "pid" in self.pc_attrs:
+            raise ValueError("Point source id attribute not set")
+        I = (self.pid == pid)
+        return self.cut(I)
+
+    def cut_to_class(self, c, exclude=False):
+        """
+        Cut the pointcloud to points of a specific class.
+        Args:
+            c: class (integer) or iterable of integers.
+            exclude: boolean indicating whether to use c as an exclusive list (cut to the complement).
+        Returns:
+            A new Pontcloud object.
+        Raises:
+            ValueError: if class attribute is not set.
+        """
+        # will now accept a list or another iterable...
+        if not "c" in self.attributes:
+            raise ValueError("Class attribute not set.")
+        try:
+            cs = iter(c)
+        except:
+            cs = (c,)
+        if exclude:
+            I = np.ones((self.c.shape[0],), dtype=np.bool)
+        else:
+            I = np.zeros((self.c.shape[0],), dtype=np.bool)
+        # TODO: use inplace operations to speed up...
+        for this_c in cs:
+            if exclude:
+                I &= (self.c != this_c)
+            else:
+                I |= (self.c == this_c)
+        return self.cut(I)
+
+    def cut_to_return_number(self, rn):
+        """
+        Cut to points with return number rn (must have this attribute).
+        Args:
+            rn: return number to cut to.
+        Returns:
+            New Pointcloud object.
+        Raises:
+            ValueError: if no return numbers stored.
+        """
+        if not "rn" in self.pc_attrs:
+            raise ValueError("Return number attribute not set.")
+        I = (self.rn == rn)
+        return self.cut(I)
+
+    def get_classes(self):
+        """Return the list of unique classes."""
+        return self.get_unique_attribute_values("c")
+
+    def get_strips(self):
+        # just an alias
+        return self.get_pids()
+
+    def get_pids(self):
+        """Return the list of unique point source ids"""
+        return self.get_unique_attribute_values("pid")
+
+    def get_return_numbers(self):
+        """Return the list of unique return numbers (rn_min,...,rn_max)"""
+        return self.get_unique_attribute_values("rn")
+    
+        
+        
 
 
 def unit_test(path):
