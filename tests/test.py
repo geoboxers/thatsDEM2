@@ -16,8 +16,8 @@ from thatsDEM import pointcloud, triangle, array_geometry
 
 LOG = logging.getLogger(__name__)
 
-class TestTriangle(unittest.TestCase):
-
+class TestTriangle(object):
+    
     def test_triangle(self):
         n1 = 1000
         n2 = 1000
@@ -158,6 +158,63 @@ class TestPointcloud(unittest.TestCase):
         pc.sort_spatially(2)
         z = pc.min_filter(1.5)
         self.assertTrue((z == (1,1,2,3)).all())
+    
+    def _test_pointcloud_grid_filter(self, method, mean_val):
+        pc = pointcloud.fromArray(np.arange(100).reshape((10,10)), [0, 1, 0, 10, 0, -1])
+        pc.sort_spatially(2)
+        g = pc.get_grid(ncols=10, nrows=10, x1=0, x2=10, y1=0, y2=10, attr="z", srad=2, method=method)
+        self.assertEqual(g.shape, (10,10))
+        self.assertAlmostEqual(g.grid.mean(), mean_val, 3)
+        
+    def test_pointcloud_grid_idw_filter(self):
+        self._test_pointcloud_grid_filter("idw_filter", 49.5)
+    
+    def test_pointcloud_grid_var_filter(self):
+        self._test_pointcloud_grid_filter("var_filter", 96.434)
+    
+    def test_pointcloud_grid_mean_filter(self):
+        self._test_pointcloud_grid_filter("mean_filter", 49.5)
+    
+    def test_pointcloud_grid_min_filter(self):
+        self._test_pointcloud_grid_filter("min_filter", 32.24)
+    
+    def test_pointcloud_grid_max_filter(self):
+        self._test_pointcloud_grid_filter("max_filter", 66.76)
+    
+    def test_pointcloud_grid_median_filter(self):
+        self._test_pointcloud_grid_filter("median_filter", 49.5)
+    
+    def test_pointcloud_grid_cellcount(self):
+        pc = pointcloud.fromArray(np.arange(100).reshape((10,10)), [0, 1, 0, 10, 0, -1])
+        g = pc.get_grid(ncols=10, nrows=10, x1=0, x2=10, y1=0, y2=10, srad=2, method="cellcount")
+        self.assertTrue((g.grid == 1).all())
+    
+    def test_pointcloud_grid_density_filter(self):
+        pc = pointcloud.fromArray(np.arange(100).reshape((10,10)), [0, 1, 0, 10, 0, -1])
+        pc.sort_spatially(2)
+        g = pc.get_grid(ncols=10, nrows=10, x1=0, x2=10, y1=0, y2=10, srad=2, method="density_filter")
+        self.assertGreater(g.grid.min(), 0.4)
+        self.assertLess(g.grid.max(), 1.1)
+        self.assertTrue((g.grid[:,0]==g.grid[:,-1]).all())
+        self.assertTrue((g.grid[0,:]==g.grid[-1,:]).all())
+    
+    def test_pointcloud_grid_by_function(self):
+        pc = pointcloud.fromArray(np.arange(100).reshape((10,10)), [0, 1, 0, 10, 0, -1])
+        g = pc.get_grid(ncols=2, nrows=2, x1=0, x2=10, y1=0, y2=10, method=np.max)
+        self.assertTrue( (g.grid == np.array(((44., 49.), (94., 99.)))).all())
+    
+    def test_pointcloud_grid_most_frequent(self):
+        pc = pointcloud.fromArray(np.ones((10,10)), [0, 1, 0, 10, 0, -1])
+        print pc.extent
+        c = (np.arange(100) % 10).astype(np.int32)
+        pc.set_attribute("c", c)
+        g = pc.get_grid(ncols=2, nrows=2, x1=0, x2=10, y1=0, y2=10, method = "most_frequent", attr="c")
+        self.assertTrue( (g.grid == np.array(((0, 5), (0, 6)))).all())
+        
+        
+        
+        
+        
         
         
         

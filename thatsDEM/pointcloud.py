@@ -649,9 +649,10 @@ class Pointcloud(object):
     def get_validity_mask(self):
         # just return the validity mask
         return self.triangle_validity_mask
-
+    
+    
     def get_grid(self, ncols=None, nrows=None, x1=None, x2=None, y1=None, y2=None,
-                 cx=None, cy=None, nd_val=-999, crop=0, method="triangulation"):
+                 cx=None, cy=None, nd_val=-999, method="triangulation", attr="z", srad=None):
         """
         Grid (an attribute of) the pointcloud.
         Will calculate grid size and georeference from supplied input (or pointcloud extent).
@@ -665,31 +666,36 @@ class Pointcloud(object):
             cx: horisontal cell size.
             cy: vertical cell size.
             nd_val: grid no data value.
-            crop: if calculating grid extent from pointcloud extent, crop the extent by this amount (should not be needed).
-            method: One of the supported method/attribute names - triangulation,return_triangles,density,class,pid.
+            method: One of the supported method names: 
+                    triangulation, return_triangles, cellcount, most_frequent,
+                    idw_filter, mean_filter, max_filter, min_filter, median_filter, var_filter,
+                    density_filter
+                    or:
+                       A callable which accepts a numpy array and returns a scalar.
+                       The latter will execute the callable on the subarray of values within each cell.
+            attr: The attribute to grid - defaults to z.
+                  Will cast attr to float64 for triangulation method, and int 32 for most_frequent.
+            srad: The search radius to use for the filter variant methods.
         Returns:
             A grid.Grid object and a grid.Grid object with triangle sizes if 'return_triangles' is specified.
         Raises:
             ValueError: If unable to calculate grid size or location from supplied input or using triangulation and triangulation not calculated or supplied with invalid method name.
         """
-        # xl = left 'corner' of "pixel", not center.
-        # yu= upper 'corner', not center.
-        # returns grid and gdal style georeference...
-
-        # The design here is not so nice. Should be possible to clean up a bit
-        # without disturbing too many tests.
+        # x1 = left 'corner' of "pixel", not center.
+        # y2 = upper 'corner', not center.
+        # TODO: Fix surprises in the logic below!!!!!
         if x1 is None:
             bbox = self.get_bounds()
-            x1 = bbox[0] + crop
+            x1 = bbox[0]
         if x2 is None:
             bbox = self.get_bounds()
-            x2 = bbox[2] - crop
+            x2 = bbox[2]
         if y1 is None:
             bbox = self.get_bounds()
-            y1 = bbox[1] + crop
+            y1 = bbox[1]
         if y2 is None:
             bbox = self.get_bounds()
-            y2 = bbox[3] - crop
+            y2 = bbox[3]
         if ncols is None and cx is None:
             raise ValueError("Unable to compute grid extent from input data")
         if nrows is None and cy is None:
@@ -697,26 +703,29 @@ class Pointcloud(object):
         if ncols is None:
             ncols = int(ceil((x2 - x1) / cx))
         else:
+            assert cx is None
             cx = (x2 - x1) / float(ncols)
         if nrows is None:
             nrows = int(ceil((y2 - y1) / cy))
         else:
+            assert cy is None
             cy = (y2 - y1) / float(nrows)
         # geo ref gdal style...
         geo_ref = [x1, cx, 0, y2, 0, -cy]
-        if method == "triangulation":  # should be special method not to mess up earlier code...
+        
+        if method in ("triangulation", "return_triangles"):
             if self.triangulation is None:
                 raise ValueError("Create a triangulation first...")
-            g = self.triangulation.make_grid(
-                self.z, ncols, nrows, x1, cx, y2, cy, nd_val, return_triangles=False)
-            return grid.Grid(g, geo_ref, nd_val)
-        elif method == "return_triangles":
-            if self.triangulation is None:
-                raise ValueError("Create a triangulation first...")
-            g, t = self.triangulation.make_grid(
-                self.z, ncols, nrows, x1, cx, y2, cy, nd_val, return_triangles=True)
+            val = np.require(self.get_array(attr), dtype=np.float64)
+            if method == "triangulation":
+                g = self.triangulation.make_grid(
+                val, ncols, nrows, x1, cx, y2, cy, nd_val, return_triangles=False)
+                return grid.Grid(g, geo_ref, nd_val)
+            else:
+                g, t = self.triangulation.make_grid(
+                val, ncols, nrows, x1, cx, y2, cy, nd_val, return_triangles=True)
             return grid.Grid(g, geo_ref, nd_val), grid.Grid(t, geo_ref, nd_val)
-        elif method == "density":  # density grid
+        elif method == "cellcount":  # density grid
             arr_coords = ((self.xy - (geo_ref[0], geo_ref[3])) /
                           (geo_ref[1], geo_ref[5])).astype(np.int32)
             M = np.logical_and(arr_coords[:, 0] >= 0, arr_coords[:, 0] < ncols)
@@ -729,14 +738,28 @@ class Pointcloud(object):
             h, b = np.histogram(B, bins)
             h = h.reshape((nrows, ncols))
             return grid.Grid(h, geo_ref, 0)  # zero always nodata value here...
-        elif method == "class":
+        elif method == "most_frequent":
             # define method which takes the most frequent value in a cell... could be only mean...
-            g = grid.grid_most_frequent_value(self.xy, self.c, ncols, nrows, geo_ref, nd_val=-999)
-            g.grid = g.grid.astype(np.uint8)
+            val = np.require(self.get_array(attr), dtype=np.int32)
+            g = grid.grid_most_frequent_value(self.xy, val, ncols, nrows, geo_ref, nd_val=nd_val)
             return g
-        elif method == "pid":
-            g = grid.grid_most_frequent_value(self.xy, self.pid, ncols, nrows, geo_ref, nd_val=-999)
-            return g
+        elif method in ("density_filter", "idw_filter", "max_filter", 
+                        "min_filter", "mean_filter", "median_filter", "var_filter"):
+            if self.spatial_index is None:
+                raise ValueError("Sort pointcloud first")
+            if srad is None:
+                srad = self.index_header[4]
+            filter_func = getattr(self, method)
+            assert hasattr(filter_func, "__call__")
+            pts = mesh_as_points((nrows, ncols), geo_ref)
+            if method == "density_filter":
+                z = filter_func(srad, xy=pts).reshape((nrows, ncols))
+            else:
+                z = filter_func(srad, xy=pts, nd_val=nd_val, attr=attr).reshape((nrows, ncols))
+            return grid.Grid(z, geo_ref, nd_val)
+        elif hasattr(method, "__call__"):
+            val = self.get_array(attr)
+            return grid.make_grid(self.xy, val, ncols, nrows, geo_ref, nd_val=nd_val, method=method)
         else:
             raise ValueError("Unsupported method.")
 
@@ -963,8 +986,9 @@ class Pointcloud(object):
             raise Exception("Build a spatial index first!")
         if rad > self.index_header[4]:
             raise Warning("Filter radius larger than cell size of spatial index will not catch all points!")
-
-    def min_filter(self, filter_rad, xy=None, nd_val=-9999):
+    
+    # '2.5D' filters
+    def min_filter(self, filter_rad, xy=None, nd_val=-9999, attr="z"):
         """
         Calculate minumum filter of z along self.xy or a supplied set of input points. Useful for gridding.
         Args:
@@ -976,11 +1000,13 @@ class Pointcloud(object):
         self.validate_filter_args(filter_rad)
         if xy is None:
             xy = self.xy
+        vals = np.require(self.get_array(attr), dtype=np.float64)
         z_out = np.zeros((xy.shape[0],), dtype=np.float64)
+        
         array_geometry.lib.pc_min_filter(
             xy,
             self.xy,
-            self.z,
+            vals,
             z_out,
             filter_rad,
             nd_val,
@@ -989,7 +1015,7 @@ class Pointcloud(object):
             xy.shape[0])
         return z_out
 
-    def mean_filter(self, filter_rad, xy=None, nd_val=-9999):
+    def mean_filter(self, filter_rad, xy=None, nd_val=-9999, attr="z"):
         """
         Calculate mean filter of z along self.xy or a supplied set of input points. Useful for gridding.
         Args:
@@ -1001,11 +1027,12 @@ class Pointcloud(object):
         self.validate_filter_args(filter_rad)
         if xy is None:
             xy = self.xy
+        vals = np.require(self.get_array(attr), dtype=np.float64)
         z_out = np.zeros((xy.shape[0],), dtype=np.float64)
         array_geometry.lib.pc_mean_filter(
             xy,
             self.xy,
-            self.z,
+            vals,
             z_out,
             filter_rad,
             nd_val,
@@ -1014,7 +1041,7 @@ class Pointcloud(object):
             xy.shape[0])
         return z_out
 
-    def max_filter(self, filter_rad, xy=None, nd_val=-9999):
+    def max_filter(self, filter_rad, xy=None, nd_val=-9999, attr="z"):
         """
         Calculate maximum filter of z along self.xy or a supplied set of input points. Useful for gridding.
         Args:
@@ -1026,12 +1053,13 @@ class Pointcloud(object):
         self.validate_filter_args(filter_rad)
         if xy is None:
             xy = self.xy
+        vals = np.require(self.get_array(attr), dtype=np.float64)
         z_out = np.zeros((xy.shape[0],), dtype=np.float64)
         array_geometry.lib.pc_min_filter(
-            xy, self.xy, -self.z, z_out, filter_rad, nd_val, self.spatial_index, self.index_header, xy.shape[0])
+            xy, self.xy, -vals, z_out, filter_rad, nd_val, self.spatial_index, self.index_header, xy.shape[0])
         return -z_out
 
-    def median_filter(self, filter_rad, xy=None, nd_val=-9999):
+    def median_filter(self, filter_rad, xy=None, nd_val=-9999, attr="z"):
         """
         Calculate median filter of z along self.xy or a supplied set of input points. Useful for gridding.
         Args:
@@ -1043,11 +1071,12 @@ class Pointcloud(object):
         self.validate_filter_args(filter_rad)
         if xy is None:
             xy = self.xy
+        vals = np.require(self.get_array(attr), dtype=np.float64)
         z_out = np.zeros((xy.shape[0],), dtype=np.float64)
         array_geometry.lib.pc_median_filter(
             xy,
             self.xy,
-            self.z,
+            vals,
             z_out,
             filter_rad,
             nd_val,
@@ -1056,7 +1085,7 @@ class Pointcloud(object):
             xy.shape[0])
         return z_out
 
-    def var_filter(self, filter_rad, xy=None, nd_val=-9999):
+    def var_filter(self, filter_rad, xy=None, nd_val=-9999, attr="z"):
         """
         Calculate variance filter of z along self.xy or a supplied set of input points. Useful for gridding.
         Args:
@@ -1068,11 +1097,12 @@ class Pointcloud(object):
         self.validate_filter_args(filter_rad)
         if xy is None:
             xy = self.xy
+        vals = np.require(self.get_array(attr), dtype=np.float64)
         z_out = np.zeros((xy.shape[0],), dtype=np.float64)
         array_geometry.lib.pc_var_filter(
             xy,
             self.xy,
-            self.z,
+            vals,
             z_out,
             filter_rad,
             nd_val,
@@ -1080,7 +1110,34 @@ class Pointcloud(object):
             self.index_header,
             xy.shape[0])
         return z_out
-
+        
+    def idw_filter(self, filter_rad, xy=None, nd_val=-9999, attr="z"):
+        """
+        Calculate inverse distance weighted z values along self.xy or a supplied set of input points. Useful for gridding.
+        Args:
+            filter_rad: The radius of the filter. Should not be larger than cell size in spatial index (for now).
+            xy: Optional list of input points to filter along. Will use self.xy if not supplied.
+        Returns:
+            1D array of filtered values.
+        """
+        self.validate_filter_args(filter_rad)
+        if xy is None:
+            xy = self.xy
+        vals = np.require(self.get_array(attr), dtype=np.float64)
+        z_out = np.zeros((xy.shape[0],), dtype=np.float64)
+        array_geometry.lib.pc_idw_filter(
+            xy,
+            self.xy,
+            vals,
+            z_out,
+            filter_rad,
+            nd_val,
+            self.spatial_index,
+            self.index_header,
+            xy.shape[0])
+        return z_out
+   
+    # 'Geometric' filters
     def distance_filter(self, filter_rad, xy, nd_val=9999):
         """
         Calculate point distance filter along self.xy or a supplied set of input points (which should really be supplied for this to make sense). Useful for gridding.
@@ -1126,7 +1183,7 @@ class Pointcloud(object):
             self.index_header,
             xy.shape[0])
         return idx_out.astype(np.int32)
-        
+
     def density_filter(self, filter_rad, xy=None):
         """
         Calculate point density filter along self.xy or a supplied set of input points. Useful for gridding.
@@ -1150,55 +1207,8 @@ class Pointcloud(object):
             self.index_header,
             xy.shape[0])
         return z_out
-
-    def idw_filter(self, filter_rad, xy=None, nd_val=-9999):
-        """
-        Calculate inverse distance weighted z values along self.xy or a supplied set of input points. Useful for gridding.
-        Args:
-            filter_rad: The radius of the filter. Should not be larger than cell size in spatial index (for now).
-            xy: Optional list of input points to filter along. Will use self.xy if not supplied.
-        Returns:
-            1D array of filtered values.
-        """
-        self.validate_filter_args(filter_rad)
-        if xy is None:
-            xy = self.xy
-        z_out = np.zeros((xy.shape[0],), dtype=np.float64)
-        array_geometry.lib.pc_idw_filter(
-            xy,
-            self.xy,
-            self.z,
-            z_out,
-            filter_rad,
-            nd_val,
-            self.spatial_index,
-            self.index_header,
-            xy.shape[0])
-        return z_out
-    def density_filter(self, filter_rad, xy=None):
-        """
-        Calculate point density filter along self.xy or a supplied set of input points. Useful for gridding.
-        Args:
-            filter_rad: The radius of the filter. Should not be larger than cell size in spatial index (for now).
-            xy: Optional list of input points to filter along. Will use self.xy if not supplied.
-        Returns:
-            1D array of filtered values.
-        """
-        self.validate_filter_args(filter_rad)
-        if xy is None:
-            xy = self.xy
-        z_out = np.zeros((xy.shape[0],), dtype=np.float64)
-        array_geometry.lib.pc_density_filter(
-            xy,
-            self.xy,
-            self.z,
-            z_out,
-            filter_rad,
-            self.spatial_index,
-            self.index_header,
-            xy.shape[0])
-        return z_out
-
+    
+    # 3D filters
     def ballcount_filter(self, filter_rad, xy=None, z=None, nd_val=0):
         """
         Calculate number of points within a ball a radius filter_rad
@@ -1293,11 +1303,13 @@ class LidarPointcloud(Pointcloud):
     designed for lidar pointclouds.
     """
     # The allowed attributes for a LidarPointcloud
-    LIDAR_ATTRS = frozenset(["c", "rn", "pid", "intensity"])
+    LIDAR_ATTRS = frozenset(["c", "rn", "pid", "intensity",
+    "red", "green", "blue"])
     
     def __init__(self, xy, z, **pc_attrs):
         Pointcloud.__init__(self, xy, z, **pc_attrs)
-    
+  
+            
     def cut_to_strip(self, pid):
         """
         Cut the pointcloud to the points with a specific point source id.

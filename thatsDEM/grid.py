@@ -163,7 +163,7 @@ def resample_grid(grid, nd_val, geo_ref_in, geo_ref_out, ncols_out, nrows_out):
 
 
 # slow, but flexible method designed to calc. some algebraic quantity of q's within every single cell
-def make_grid(xy, q, ncols, nrows, georef, nd_val=-9999, method=np.mean, dtype=np.float32):  # gdal-style georef
+def make_grid(xy, q, ncols, nrows, georef, nd_val=-9999, method=np.mean, dtype=None):  # gdal-style georef
     """
     Apply a function on scattered data (xy) to produce a regular grid. Will apply the supplied method on the points that fall within each output cell.
     Args:
@@ -178,6 +178,8 @@ def make_grid(xy, q, ncols, nrows, georef, nd_val=-9999, method=np.mean, dtype=n
     Returns:
         2d numpy array of shape (nrows,ncols).
     """
+    if dtype is None:
+        dtype = q.dtype
     out = np.ones((nrows, ncols), dtype=dtype) * nd_val
     arr_coords = ((xy - (georef[0], georef[3])) / (georef[1], georef[5])).astype(np.int32)
     M = np.logical_and(arr_coords[:, 0] >= 0, arr_coords[:, 0] < ncols)
@@ -236,6 +238,9 @@ def grid_most_frequent_value(xy, q, ncols, nrows, georef, v1=None, v2=None, nd_v
         v1 = q.min()
     if v2 is None:
         v2 = q.max()
+    size = (v2-v1+1)
+    if size < 1 or size>10000:
+        raise ValueError("Invalid range: %d" %size)
     lib.grid_most_frequent_value(B, q, out, v1, v2, nd_val, B.shape[0])
     return Grid(out, georef, nd_val)
 
