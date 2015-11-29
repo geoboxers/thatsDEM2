@@ -239,7 +239,7 @@ def grid_most_frequent_value(xy, q, ncols, nrows, georef, v1=None, v2=None, nd_v
     if v2 is None:
         v2 = q.max()
     size = (v2-v1+1)
-    if size < 1 or size>10000:
+    if size < 1 or size>20000:
         raise ValueError("Invalid range: %d" %size)
     lib.grid_most_frequent_value(B, q, out, v1, v2, nd_val, B.shape[0])
     return Grid(out, georef, nd_val)

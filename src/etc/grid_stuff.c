@@ -134,4 +134,3 @@ DLL_EXPORT void grid_most_frequent_value(int *sorted_indices, int *values, int *
     free(count);
 }
 
-
