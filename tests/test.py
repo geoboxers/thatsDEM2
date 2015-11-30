@@ -16,47 +16,48 @@ from thatsDEM import pointcloud, triangle, array_geometry
 
 LOG = logging.getLogger(__name__)
 
-class TestTriangle(object):
+class TestTriangle(unittest.TestCase):
     
-    def test_triangle(self):
-        n1 = 1000
-        n2 = 1000
-        points = np.random.rand(n1, 2) * 1000.0
-        z = np.random.rand(n1) * 100
-        xmin, ymin = points.min(axis=0)
-        xmax, ymax = points.max(axis=0)
-        LOG.info("Span of 'pointcloud': %.2f,%.2f,%.2f,%.2f" % (xmin, ymin, xmax, ymax))
+    def setUp(self):
+        self.n1 = 1000
+        self.n2 = 1000
+        self.points = np.random.rand(self.n1, 2) * 1000.0
+        t1 = time.clock()
+        self.tri = triangle.Triangulation(self.points, -1)
+        t2 = time.clock()
+        t3 = t2 - t1
+        LOG.info("Building triangulation and index of %d points: %.4f s" % (self.n1, t3))
+    
+    def test_optimize_index(self):
+        LOG.info("Testing optimize index.")
+        self.tri.optimize_index()
+    
+    def test_find_triangles(self):
+        LOG.info("Testing Find triangles.")
+        xmin, ymin = self.points.min(axis=0)
+        xmax, ymax = self.points.max(axis=0)
         dx = (xmax - xmin)
         dy = (ymax - ymin)
-        cx, cy = points.mean(axis=0)
-        xy = np.random.rand(n2, 2) * [dx, dy] * 0.3 + [cx, cy]
-        t1 = time.clock()
-        tri = triangle.Triangulation(points, -1)
-        t2 = time.clock()
+        cx, cy = self.points.mean(axis=0)
+        xy = np.random.rand(self.n2, 2) * [dx, dy] * 0.3 + [cx, cy]
+        t1 = time.time()
+        T = self.tri.find_triangles(xy)
+        t2 = time.time()
         t3 = t2 - t1
-        LOG.info("Building triangulation and index of %d points: %.4f s" % (n1, t3))
-        LOG.info(tri.inspect_index())
-        t1 = time.clock()
-        tri.optimize_index()
-        t2 = time.clock()
-        t3 = t2 - t1
-        LOG.info("\n%s\nOptimizing index: %.4fs" % ("*" * 50, t3))
-        LOG.info(tri.inspect_index())
-        t1 = time.clock()
-        T = tri.find_triangles(xy)
-        t2 = time.clock()
-        t3 = t2 - t1
-        LOG.info("Finding %d simplices: %.4f s, pr. 1e6: %.4f s" % (n2, t3, t3 / n2 * 1e6))
+        LOG.info("Finding %d simplices: %.4f s, pr. 1e6: %.4f s" % (self.n2, t3, t3 / self.n2 * 1e6))
         self.assertGreaterEqual(T.min(), 0)
-        self.assertLess(T.max(), tri.ntrig)
-        t1 = time.clock()
-        zi = tri.interpolate(z, points)
-        t2 = time.clock()
+        self.assertLess(T.max(), self.tri.ntrig)
+    
+    def test_interpolation(self):
+        z = np.random.rand(self.n1) * 100
+        t1 = time.time()
+        zi = self.tri.interpolate(z, self.points)
+        t2 = time.time()
         t3 = t2 - t1
-        LOG.info("Interpolation test of vertices:  %.4f s, pr. 1e6: %.4f s" % (t3, t3 / n1 * 1e6))
+        LOG.info("Interpolation test of vertices:  %.4f s, pr. 1e6: %.4f s" % (t3, t3 / self.n1 * 1e6))
         D = np.fabs(z - zi)
-        LOG.info("Diff: %.15g, %.15g, %.15g" % (D.max(), D.min(), D.mean()))
         self.assertLess(D.max() , 1e-4)
+
 
 class TestPointcloud(unittest.TestCase):
 
@@ -160,6 +161,7 @@ class TestPointcloud(unittest.TestCase):
         self.assertTrue((z == (1,1,2,3)).all())
     
     def _test_pointcloud_grid_filter(self, method, mean_val):
+        LOG.info("Test pointcloud gridding, method: %s" % str(method))
         pc = pointcloud.fromArray(np.arange(100).reshape((10,10)), [0, 1, 0, 10, 0, -1])
         pc.sort_spatially(2)
         g = pc.get_grid(ncols=10, nrows=10, x1=0, x2=10, y1=0, y2=10, attr="z", srad=2, method=method)
@@ -185,11 +187,13 @@ class TestPointcloud(unittest.TestCase):
         self._test_pointcloud_grid_filter("median_filter", 49.5)
     
     def test_pointcloud_grid_cellcount(self):
+        LOG.info("Test pointcloud gridding, method: cellcount")
         pc = pointcloud.fromArray(np.arange(100).reshape((10,10)), [0, 1, 0, 10, 0, -1])
         g = pc.get_grid(ncols=10, nrows=10, x1=0, x2=10, y1=0, y2=10, srad=2, method="cellcount")
         self.assertTrue((g.grid == 1).all())
     
     def test_pointcloud_grid_density_filter(self):
+        LOG.info("Test pointcloud gridding, method: density_filter")
         pc = pointcloud.fromArray(np.arange(100).reshape((10,10)), [0, 1, 0, 10, 0, -1])
         pc.sort_spatially(2)
         g = pc.get_grid(ncols=10, nrows=10, x1=0, x2=10, y1=0, y2=10, srad=2, method="density_filter")
@@ -199,13 +203,14 @@ class TestPointcloud(unittest.TestCase):
         self.assertTrue((g.grid[0,:]==g.grid[-1,:]).all())
     
     def test_pointcloud_grid_by_function(self):
+        LOG.info("Test pointcloud gridding, method: np.max")
         pc = pointcloud.fromArray(np.arange(100).reshape((10,10)), [0, 1, 0, 10, 0, -1])
         g = pc.get_grid(ncols=2, nrows=2, x1=0, x2=10, y1=0, y2=10, method=np.max)
         self.assertTrue( (g.grid == np.array(((44., 49.), (94., 99.)))).all())
     
     def test_pointcloud_grid_most_frequent(self):
+        LOG.info("Test pointcloud gridding, method: most_frequent")
         pc = pointcloud.fromArray(np.ones((10,10)), [0, 1, 0, 10, 0, -1])
-        print pc.extent
         c = (np.arange(100) % 10).astype(np.int32)
         pc.set_attribute("c", c)
         g = pc.get_grid(ncols=2, nrows=2, x1=0, x2=10, y1=0, y2=10, method = "most_frequent", attr="c")
