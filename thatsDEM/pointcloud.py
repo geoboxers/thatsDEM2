@@ -32,9 +32,9 @@ import thatsDEM.remote_files as remote_files
 try:
     import laspy.file
 except ImportError:
-    HAS_LASPY = True
-else:
     HAS_LASPY = False
+else:
+    HAS_LASPY = True
 try:
     import slash
 except Exception:
@@ -97,12 +97,32 @@ def fromLAS(path, include_return_number=False, **kwargs):
     Returns:
         A pointcloud.Pointcloud object.
     """
-    if HAS_SLASH:
-        plas = slash.LasFile(path)
-        r = plas.read_records(return_ret_number=include_return_number)
-        plas.close()
-        return Pointcloud(r["xy"], r["z"], r["c"], r["pid"], r["rn"])
+    if HAS_LASPY:
+        return fromLaspy(path, **kwargs)
+    elif HAS_SLASH:
+        return fromSlash(path, **kwargs)
+    else:
+        raise Exception("Laspy and slash not available.")
 
+def fromSlash(path, include_return_number=False, **kwargs):
+    plas = slash.LasFile(path)
+    r = plas.read_records(return_ret_number=include_return_number)
+    plas.close()
+    xy = r["xy"]
+    z = r["z"]
+    for key in r.keys():
+        if key in ("xy","z") or r[key] is None:
+            del r[key]
+    return LidarPointcloud(xy, z, **r)
+
+def fromLaspy(path, **kwargs):
+    plas = laspy.file.File(path)
+    pc = LidarPointcloud(np.column_stack((plas.x,plas.y)),
+                         plas.z, c=plas.raw_classification, 
+                         pid=plas.pt_src_id)
+    plas.close()
+    return pc
+    
 
 def fromNpy(path, **kwargs):
     """
