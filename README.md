@@ -16,3 +16,6 @@ Pull the repository and do the following - requires Scons!
 ```
 Use --debug for a debug build.
 Will require Mingw64 on Windows (setup a proper environment or run from a Mingw64 shell)
+
+### Installation ###
+There is no setup.py. You'll need to e.g. modify PYTHONPATH.
