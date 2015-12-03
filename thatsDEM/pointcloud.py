@@ -37,7 +37,7 @@ else:
     HAS_LASPY = False
 try:
     import slash
-except ImportError:
+except Exception:
     HAS_SLASH = False
 else:
     HAS_SLASH = True

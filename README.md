@@ -2,17 +2,18 @@
 
 thatsDEM!
 
-[Wiki](https://bitbucket.org/GSTudvikler/thatsdem/wiki/Home)
+This project is forked from GST thatsDEM.
 
 ### Build instructions ###
 
-Pull the repository and do the following:
+Pull the repository and do the following - requires Scons!
 
 ```
 #!cmd
 
-> cd src\build\
-> python build.py
+> scons -Q
+
 ```
 
-That's it!
+That's it! Use --debug for a debug build.
+Will require Mingw64 on Windows (setup a proper environment or run from shell)
