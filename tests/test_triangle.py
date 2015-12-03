@@ -15,8 +15,8 @@ from thatsDEM import triangle
 class TestTriangle(unittest.TestCase):
     
     def setUp(self):
-        self.n1 = 1000
-        self.n2 = 1000
+        self.n1 = 4000
+        self.n2 = 4000
         self.points = np.random.rand(self.n1, 2) * 1000.0
         t1 = time.clock()
         self.tri = triangle.Triangulation(self.points, -1)
@@ -46,9 +46,9 @@ class TestTriangle(unittest.TestCase):
     
     def test_interpolation(self):
         z = np.random.rand(self.n1) * 100
-        t1 = time.time()
+        t1 = time.clock()
         zi = self.tri.interpolate(z, self.points)
-        t2 = time.time()
+        t2 = time.clock()
         t3 = t2 - t1
         LOG.info("Interpolation test of vertices:  %.4f s, pr. 1e6: %.4f s" % (t3, t3 / self.n1 * 1e6))
         D = np.fabs(z - zi)
