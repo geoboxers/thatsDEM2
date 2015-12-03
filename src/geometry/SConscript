@@ -1,0 +1,11 @@
+# Build libfgeom
+Import("env", "IS_WIN")
+cloned_env = env.Clone()
+SRC = ["array_geometry.c"]
+DEF_FILE="libfgeom.def"
+cloned_env = env.Clone()
+if IS_WIN:
+    SRC.append(DEF_FILE)
+cloned_env = env.Clone()
+libfgeom = cloned_env.SharedLibrary(target=env["libfgeom"], source=SRC)
+Return("libfgeom")

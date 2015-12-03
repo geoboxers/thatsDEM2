@@ -1,0 +1,7 @@
+# Build libgrid
+Import("env", "IS_WIN")
+cloned_env = env.Clone()
+SRC = ["grid_stuff.c"]
+cloned_env = env.Clone()
+libgrid = cloned_env.SharedLibrary(target=env["libgrid"], source=SRC)
+Return("libgrid")

@@ -1,0 +1,19 @@
+# Build triangle and libtripy
+import os
+Import("env", "IS_WIN")
+cloned_env = env.Clone()
+TRI_DEFINES=["TRILIBRARY", "NO_TIMER", "GCC_FPU_CONTROL"]
+SRC_TRIANGLE = [os.path.join("ignore", "triangle.c")]
+SRC_INDEX = ["_tri.c","trig_index.c"]
+DEF_INDEX="libtripy.def"
+cloned_env.Append(CPPDEFINES=TRI_DEFINES)
+cloned_env.Append(CCFLAGS=["-fPIC"])
+libtriangle = cloned_env.Library(target=env["libtri"], source=SRC_TRIANGLE)
+cloned_env = env.Clone()
+if IS_WIN:
+    SRC_INDEX.append(DEF_INDEX)
+cloned_env = env.Clone()
+cloned_env.Append(CPPPATH=["ignore"])
+libtripy = cloned_env.SharedLibrary(target=env["libtripy"], source=SRC_INDEX, LIBS=[libtriangle])
+Return("libtriangle", "libtripy")
+
