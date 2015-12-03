@@ -12,6 +12,8 @@ import logging
 import numpy as np
 from thatsDEM import triangle
 
+LOG = logging.getLogger(__name__)
+
 class TestTriangle(unittest.TestCase):
     
     def setUp(self):
@@ -54,7 +56,7 @@ class TestTriangle(unittest.TestCase):
         D = np.fabs(z - zi)
         self.assertLess(D.max() , 1e-4)
 
-LOG = logging.getLogger(__name__)
+
 
         
 if __name__ == "__main__":

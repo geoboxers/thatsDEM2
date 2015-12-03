@@ -2,7 +2,7 @@
 import os
 Import("env", "IS_WIN")
 cloned_env = env.Clone()
-TRI_DEFINES=["TRILIBRARY", "NO_TIMER", "GCC_FPU_CONTROL","POINTERS_ARE_VERY_LONG"]
+TRI_DEFINES=["TRILIBRARY", "NO_TIMER", "GCC_FPU_CONTROL", "POINTERS_ARE_VERY_LONG"]
 SRC_TRIANGLE = [os.path.join("ignore", "triangle.c")]
 SRC_INDEX = ["_tri.c","trig_index.c"]
 DEF_INDEX="libtripy.def"
