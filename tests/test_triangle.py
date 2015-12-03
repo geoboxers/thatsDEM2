@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-Unittests for pointcloud
+Unittests for triangle
 @author: simlk
 """
 
