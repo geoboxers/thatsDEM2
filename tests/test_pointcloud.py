@@ -10,6 +10,7 @@ import unittest
 import time
 import logging
 import numpy as np
+import tempfile
 from thatsDEM2 import pointcloud
 
 LOG = logging.getLogger(__name__)
@@ -91,8 +92,8 @@ class TestPointcloud(unittest.TestCase):
     
     def test_pointcloud_might_overlap(self):
         LOG.info("Test pointcloud sorting")
-        pc1= pointcloud.fromArray(np.ones((10,10)), [0, 1, 0, 10, 0, -1])
-        pc2= pointcloud.fromArray(np.ones((10,10)), [0, 1, 0, 5, 0, -1])
+        pc1= pointcloud.from_array(np.ones((10,10)), [0, 1, 0, 10, 0, -1])
+        pc2= pointcloud.from_array(np.ones((10,10)), [0, 1, 0, 5, 0, -1])
         self.assertTrue(pc1.might_overlap(pc2))
         pc1.affine_transformation_2d(T=(30,30))
         self.assertFalse(pc1.might_overlap(pc2))
@@ -117,7 +118,7 @@ class TestPointcloud(unittest.TestCase):
     
     def _test_pointcloud_grid_filter(self, method, mean_val):
         LOG.info("Test pointcloud gridding, method: %s" % str(method))
-        pc = pointcloud.fromArray(np.arange(100).reshape((10,10)), [0, 1, 0, 10, 0, -1])
+        pc = pointcloud.from_array(np.arange(100).reshape((10,10)), [0, 1, 0, 10, 0, -1])
         pc.sort_spatially(2)
         g = pc.get_grid(ncols=10, nrows=10, x1=0, x2=10, y1=0, y2=10, attr="z", srad=2, method=method)
         self.assertEqual(g.shape, (10,10))
@@ -143,13 +144,13 @@ class TestPointcloud(unittest.TestCase):
     
     def test_pointcloud_grid_cellcount(self):
         LOG.info("Test pointcloud gridding, method: cellcount")
-        pc = pointcloud.fromArray(np.arange(100).reshape((10,10)), [0, 1, 0, 10, 0, -1])
+        pc = pointcloud.from_array(np.arange(100).reshape((10,10)), [0, 1, 0, 10, 0, -1])
         g = pc.get_grid(ncols=10, nrows=10, x1=0, x2=10, y1=0, y2=10, srad=2, method="cellcount")
         self.assertTrue((g.grid == 1).all())
     
     def test_pointcloud_grid_density_filter(self):
         LOG.info("Test pointcloud gridding, method: density_filter")
-        pc = pointcloud.fromArray(np.arange(100).reshape((10,10)), [0, 1, 0, 10, 0, -1])
+        pc = pointcloud.from_array(np.arange(100).reshape((10,10)), [0, 1, 0, 10, 0, -1])
         pc.sort_spatially(2)
         g = pc.get_grid(ncols=10, nrows=10, x1=0, x2=10, y1=0, y2=10, srad=2, method="density_filter")
         self.assertGreater(g.grid.min(), 0.4)
@@ -159,17 +160,34 @@ class TestPointcloud(unittest.TestCase):
     
     def test_pointcloud_grid_by_function(self):
         LOG.info("Test pointcloud gridding, method: np.max")
-        pc = pointcloud.fromArray(np.arange(100).reshape((10,10)), [0, 1, 0, 10, 0, -1])
+        pc = pointcloud.from_array(np.arange(100).reshape((10,10)), [0, 1, 0, 10, 0, -1])
         g = pc.get_grid(ncols=2, nrows=2, x1=0, x2=10, y1=0, y2=10, method=np.max)
         self.assertTrue( (g.grid == np.array(((44., 49.), (94., 99.)))).all())
     
     def test_pointcloud_grid_most_frequent(self):
         LOG.info("Test pointcloud gridding, method: most_frequent")
-        pc = pointcloud.fromArray(np.ones((10,10)), [0, 1, 0, 10, 0, -1])
+        pc = pointcloud.from_array(np.ones((10,10)), [0, 1, 0, 10, 0, -1])
         c = (np.arange(100) % 10).astype(np.int32)
         pc.set_attribute("c", c)
         g = pc.get_grid(ncols=2, nrows=2, x1=0, x2=10, y1=0, y2=10, method = "most_frequent", attr="c")
         self.assertTrue( (g.grid == np.array(((0, 5), (0, 6)))).all())
+    
+    def _get_named_temp_file(self, ext):
+        f = tempfile.NamedTemporaryFile(suffix=ext, delete=False)
+        f.close()
+        os.unlink(f.name)  # now we have a unique name, nice :-)
+        return f.name
+        
+    def test_dump_npz(self):
+        LOG.info("Test pointcloud dump_npz /from_npz")
+        pc = pointcloud.from_array(np.arange(100).reshape((10,10)), [0, 1, 0, 10, 0, -1])
+        pc.set_attribute("a", np.arange(100))
+        path = self._get_named_temp_file(".npz")
+        pc.dump_npz(path)
+        pc_rest = pointcloud.from_npz(path)
+        self.assertTrue((pc_rest.xy == pc_rest.xy).all())
+        self.assertTrue((pc_rest.a == pc.a).all())
+        os.remove(path)
         
 if __name__ == "__main__":
     logging.basicConfig(level=logging.DEBUG)

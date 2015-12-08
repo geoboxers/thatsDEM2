@@ -47,7 +47,7 @@ class InvalidArrayError(Exception):
     pass
 
 
-def fromAny(path, **kwargs):
+def from_any(path, **kwargs):
     """
     Load a pointcloud from a range of 'formats'. The specific 'driver' to use is decided from the filename extension.
     Can also handle remote files from s3 and http. Whether a file is remote is decided from the path prefix.
@@ -67,17 +67,17 @@ def fromAny(path, **kwargs):
         path = temp_file
     try:
         if ext == ".las" or ext == ".laz":
-            pc = fromLAS(path, **kwargs)
+            pc = from_las(path, **kwargs)
         elif ext == ".npy":
-            pc = fromNpy(path, **kwargs)
+            pc = from_npy(path, **kwargs)
         elif ext == ".txt":
-            pc = fromText(path, **kwargs)
+            pc = from_text(path, **kwargs)
         elif ext == ".npz":
-            pc =fromNpz(path, **kwargs)
+            pc =from_npz(path, **kwargs)
         elif ext == ".tif" or ext == ".tiff" or ext == ".asc":
-            pc = fromGrid(path, **kwargs)
+            pc = from_grid(path, **kwargs)
         else:
-            pc = fromOGR(path, **kwargs)
+            pc = from_ogr(path, **kwargs)
     finally:
         if temp_file is not None and os.path.isfile(temp_file):
             os.remove(temp_file)
@@ -86,7 +86,7 @@ def fromAny(path, **kwargs):
 
 # read a las file and return a pointcloud - spatial selection by xy_box
 # (x1,y1,x2,y2) and / or z_box (z1,z2) and/or list of classes...
-def fromLAS(path, include_return_number=False, **kwargs):
+def from_las(path, include_return_number=False, **kwargs):
     """
     Load a pointcloud from las / laz format via slash.LasFile. Laz reading currently requires that laszip-cli is findable.
     Args:
@@ -96,13 +96,13 @@ def fromLAS(path, include_return_number=False, **kwargs):
         A pointcloud.Pointcloud object.
     """
     if HAS_LASPY:
-        return fromLaspy(path, **kwargs)
+        return from_laspy(path, **kwargs)
     elif HAS_SLASH:
-        return fromSlash(path, **kwargs)
+        return from_slash(path, **kwargs)
     else:
         raise Exception("Laspy and slash not available.")
 
-def fromSlash(path, include_return_number=False, **kwargs):
+def from_slash(path, include_return_number=False, **kwargs):
     plas = slash.LasFile(path)
     r = plas.read_records(return_ret_number=include_return_number)
     plas.close()
@@ -113,7 +113,7 @@ def fromSlash(path, include_return_number=False, **kwargs):
             del r[key]
     return LidarPointcloud(xy, z, **r)
 
-def fromLaspy(path, **kwargs):
+def from_laspy(path, **kwargs):
     plas = laspy.file.File(path)
     pc = LidarPointcloud(np.column_stack((plas.x,plas.y)),
                          plas.z, c=plas.raw_classification, 
@@ -122,7 +122,7 @@ def fromLaspy(path, **kwargs):
     return pc
     
 
-def fromNpy(path, **kwargs):
+def from_npy(path, **kwargs):
     """
     Load a pointcloud from a platform independent numpy .npy file. Will only keep xyz.
     Args:
@@ -134,7 +134,7 @@ def fromNpy(path, **kwargs):
     return Pointcloud(xyz[:, 0:2], xyz[:, 2])
 
 
-def fromNpz(path, **kwargs):
+def from_npz(path, **kwargs):
     """
     Load a pointcloud from a platform independent numpy .npz file.
     Restoring attributes by keys is supported.
@@ -168,7 +168,7 @@ def mesh_as_points(shape, geo_ref):
     return xy
 
 
-def fromArray(z, geo_ref, nd_val=None):
+def from_array(z, geo_ref, nd_val=None):
     """
     Construct a Pointcloud object corresponding to the cell centers of an in memory grid.
     Args:
@@ -190,7 +190,7 @@ def fromArray(z, geo_ref, nd_val=None):
 # make a (geometric) pointcloud from a grid
 
 
-def fromGrid(path, **kwargs):
+def from_grid(path, **kwargs):
     """
     Construct a Pointcloud object corresponding to the cell centers of the first band of a GDAL loadable raster.
     Args:
@@ -203,11 +203,11 @@ def fromGrid(path, **kwargs):
     nd_val = ds.GetRasterBand(1).GetNoDataValue()
     z = ds.ReadAsArray().astype(np.float64)
     ds = None
-    return fromArray(z, geo_ref, nd_val)
+    return from_array(z, geo_ref, nd_val)
 
 
 # make a (geometric) pointcloud from a (xyz) text file
-def fromText(path, delim=None, **kwargs):
+def from_text(path, delim=None, **kwargs):
     """
     Load a pointcloud (xyz) from a delimited text file.
     Args:
@@ -225,7 +225,7 @@ def fromText(path, delim=None, **kwargs):
 # TODO: handle multipoint features....
 
 
-def fromOGR(path, layername=None, layersql=None, extent=None):
+def from_ogr(path, layername=None, layersql=None, extent=None):
     """
     Load a pointcloud from an OGR 3D-point datasource (only geometries).
     Args:
@@ -918,24 +918,6 @@ class Pointcloud(object):
 
    
     # dump methods
-
-    def dump_csv(self, path, delim=None):
-        """
-        Dump the pointcloud as a csv file. Will dump available attributes, except for return_number.
-        Args:
-            f: A file pointer
-            callback: An optional method to use for logging.
-        """
-        if not delim:
-            delim = " "
-        header = "x%sy%sz" % (delim, delim)
-        for a in self.attributes:
-            header += "%s%s" % (delim,a)
-        fmt = "{xy:%s}"
-        with open(path, "w") as f:
-            f.write(header+"\n")
-            for row in self:
-                f.write(fmt.format(row['xy'][0], row['xy'][1]))
 
     def dump_txt(self, path):
         """Just dump the xyz attrs of a pointcloud as a whitespace separated text file."""
