@@ -1,4 +1,5 @@
-.pyc
-.o
-.dll
-.exe
+*.pyc
+build/
+lib/
+src/triangle/store/
+.sconsign.dblite
