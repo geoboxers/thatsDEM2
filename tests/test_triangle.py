@@ -10,7 +10,7 @@ import unittest
 import time
 import logging
 import numpy as np
-from thatsDEM import triangle
+from thatsDEM2 import triangle
 
 LOG = logging.getLogger(__name__)
 
