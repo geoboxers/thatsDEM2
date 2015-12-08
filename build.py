@@ -83,10 +83,10 @@ def patch_triangle():
         zf.close()
         assert(m5 == MD5_TRI)
         LOG.info("ok...")
-        run("hg init")
-        run("hg add triangle.c")
-        run("hg commit -m dummy -u dummy")
-        run("hg patch " + PATCH_TRIANGLE)
+        run("git init")
+        run("git add triangle.c")
+        run("git commit -m dummy --author 'NoOne <nomail@nothing>'")
+        run("git apply " + PATCH_TRIANGLE)
     except Exception as e:
         LOG.exception("Patching process failed!")
         patching_exception = e

@@ -1,13 +1,7 @@
-# HG changeset patch
-# User Simon Kokkendorff <silyko@gmail.com>
-# Date 1422373308 -3600
-# Node ID 0e6dea64b3852f0f0b9c52f34f99f882903d4fc3
-# Parent  c15e09ac529790e558650b0a4ad0ab41bedfc88e
-tip
-
-diff -r c15e09ac5297 -r 0e6dea64b385 triangle.c
---- a/triangle.c	Tue Jan 27 16:40:42 2015 +0100
-+++ b/triangle.c	Tue Jan 27 16:41:48 2015 +0100
+diff --git a/triangle.c b/triangle.c
+index f7a5700..ba5f161 100644
+--- a/triangle.c
++++ b/triangle.c
 @@ -268,6 +268,7 @@
  
  /* #define CPU86 */
@@ -41,7 +35,7 @@ diff -r c15e09ac5297 -r 0e6dea64b385 triangle.c
  #ifdef TRILIBRARY
  #include "triangle.h"
  #endif /* TRILIBRARY */
-@@ -938,16 +950,16 @@
+@@ -938,16 +950,16 @@ int minus1mod3[3] = {2, 0, 1};
  /*   extracted from the two least significant bits of the pointer.           */
  
  #define decode(ptr, otri)                                                     \
@@ -61,7 +55,7 @@ diff -r c15e09ac5297 -r 0e6dea64b385 triangle.c
  
  /* The following handle manipulation primitives are all described by Guibas  */
  /*   and Stolfi.  However, Guibas and Stolfi use an edge-based data          */
-@@ -1111,16 +1123,16 @@
+@@ -1111,16 +1123,16 @@ int minus1mod3[3] = {2, 0, 1};
  
  #define infect(otri)                                                          \
    (otri).tri[6] = (triangle)                                                  \
@@ -81,7 +75,7 @@ diff -r c15e09ac5297 -r 0e6dea64b385 triangle.c
  
  /* Check or set a triangle's attributes.                                     */
  
-@@ -1158,16 +1170,16 @@
+@@ -1158,16 +1170,16 @@ int minus1mod3[3] = {2, 0, 1};
  /*   are masked out to produce the real pointer.                             */
  
  #define sdecode(sptr, osub)                                                   \
@@ -101,7 +95,7 @@ diff -r c15e09ac5297 -r 0e6dea64b385 triangle.c
  
  /* ssym() toggles the orientation of a subsegment.                           */
  
-@@ -3675,27 +3687,27 @@
+@@ -3675,27 +3687,27 @@ struct otri *t;
    struct osub printsh;
    vertex printvertex;
  
@@ -133,7 +127,7 @@ diff -r c15e09ac5297 -r 0e6dea64b385 triangle.c
             printtri.orient);
    }
  
-@@ -3703,38 +3715,38 @@
+@@ -3703,38 +3715,38 @@ struct otri *t;
    if (printvertex == (vertex) NULL)
      printf("    Origin[%d] = NULL\n", (t->orient + 1) % 3 + 3);
    else
@@ -181,7 +175,7 @@ diff -r c15e09ac5297 -r 0e6dea64b385 triangle.c
               printsh.ssorient);
      }
    }
-@@ -3769,20 +3781,20 @@
+@@ -3769,20 +3781,20 @@ struct osub *s;
    struct otri printtri;
    vertex printvertex;
  
@@ -206,7 +200,7 @@ diff -r c15e09ac5297 -r 0e6dea64b385 triangle.c
             printsh.ssorient);
    }
  
-@@ -3790,29 +3802,29 @@
+@@ -3790,29 +3802,29 @@ struct osub *s;
    if (printvertex == (vertex) NULL)
      printf("    Origin[%d] = NULL\n", 2 + s->ssorient);
    else
@@ -242,7 +236,7 @@ diff -r c15e09ac5297 -r 0e6dea64b385 triangle.c
             printtri.orient);
    }
  
-@@ -3820,15 +3832,15 @@
+@@ -3820,15 +3832,15 @@ struct osub *s;
    if (printvertex == (vertex) NULL)
      printf("    Segment origin[%d] = NULL\n", 4 + s->ssorient);
    else
@@ -262,7 +256,7 @@ diff -r c15e09ac5297 -r 0e6dea64b385 triangle.c
             printvertex[0], printvertex[1]);
  }
  
-@@ -3891,7 +3903,7 @@
+@@ -3891,7 +3903,7 @@ struct memorypool *pool;
  #endif /* not ANSI_DECLARATORS */
  
  {
@@ -271,7 +265,7 @@ diff -r c15e09ac5297 -r 0e6dea64b385 triangle.c
  
    pool->items = 0;
    pool->maxitems = 0;
-@@ -3899,11 +3911,11 @@
+@@ -3899,11 +3911,11 @@ struct memorypool *pool;
    /* Set the currently active block. */
    pool->nowblock = pool->firstblock;
    /* Find the first item in the pool.  Increment by the size of (VOID *). */
@@ -286,7 +280,7 @@ diff -r c15e09ac5297 -r 0e6dea64b385 triangle.c
    /* There are lots of unallocated items left in this block. */
    pool->unallocateditems = pool->itemsfirstblock;
    /* The stack of deallocated items is empty. */
-@@ -4008,7 +4020,7 @@
+@@ -4008,7 +4020,7 @@ struct memorypool *pool;
  {
    VOID *newitem;
    VOID **newblock;
@@ -295,7 +289,7 @@ diff -r c15e09ac5297 -r 0e6dea64b385 triangle.c
  
    /* First check the linked list of dead items.  If the list is not   */
    /*   empty, allocate an item from the list rather than a fresh one. */
-@@ -4033,11 +4045,11 @@
+@@ -4033,11 +4045,11 @@ struct memorypool *pool;
        pool->nowblock = (VOID **) *(pool->nowblock);
        /* Find the first item in the block.    */
        /*   Increment by the size of (VOID *). */
@@ -310,7 +304,7 @@ diff -r c15e09ac5297 -r 0e6dea64b385 triangle.c
        /* There are lots of unallocated items left in this block. */
        pool->unallocateditems = pool->itemsperblock;
      }
-@@ -4092,16 +4104,16 @@
+@@ -4092,16 +4104,16 @@ struct memorypool *pool;
  #endif /* not ANSI_DECLARATORS */
  
  {
@@ -331,7 +325,7 @@ diff -r c15e09ac5297 -r 0e6dea64b385 triangle.c
    /* Set the number of items left in the current block. */
    pool->pathitemsleft = pool->itemsfirstblock;
  }
-@@ -4129,7 +4141,7 @@
+@@ -4129,7 +4141,7 @@ struct memorypool *pool;
  
  {
    VOID *newitem;
@@ -340,7 +334,7 @@ diff -r c15e09ac5297 -r 0e6dea64b385 triangle.c
  
    /* Stop upon exhausting the list of items. */
    if (pool->pathitem == pool->nextitem) {
-@@ -4141,11 +4153,11 @@
+@@ -4141,11 +4153,11 @@ struct memorypool *pool;
      /* Find the next block. */
      pool->pathblock = (VOID **) *(pool->pathblock);
      /* Find the first item in the block.  Increment by the size of (VOID *). */
@@ -355,7 +349,7 @@ diff -r c15e09ac5297 -r 0e6dea64b385 triangle.c
      /* Set the number of items left in the current block. */
      pool->pathitemsleft = pool->itemsperblock;
    }
-@@ -4197,16 +4209,16 @@
+@@ -4197,16 +4209,16 @@ int subsegbytes;
  #endif /* not ANSI_DECLARATORS */
  
  {
@@ -376,7 +370,7 @@ diff -r c15e09ac5297 -r 0e6dea64b385 triangle.c
    /* Initialize the three adjoining triangles to be "outer space."  These  */
    /*   will eventually be changed by various bonding operations, but their */
    /*   values don't really matter, as long as they can legally be          */
-@@ -4226,10 +4238,10 @@
+@@ -4226,10 +4238,10 @@ int subsegbytes;
      m->dummysubbase = (subseg *) trimalloc(subsegbytes +
                                             m->subsegs.alignbytes);
      /* Align `dummysub' on a `subsegs.alignbytes'-byte boundary. */
@@ -390,7 +384,7 @@ diff -r c15e09ac5297 -r 0e6dea64b385 triangle.c
      /* Initialize the two adjoining subsegments to be the omnipresent      */
      /*   subsegment.  These will eventually be changed by various bonding  */
      /*   operations, but their values don't really matter, as long as they */
-@@ -4586,7 +4598,7 @@
+@@ -4586,7 +4598,7 @@ int number;
  {
    VOID **getblock;
    char *foundvertex;
@@ -399,7 +393,7 @@ diff -r c15e09ac5297 -r 0e6dea64b385 triangle.c
    int current;
  
    getblock = m->vertices.firstblock;
-@@ -4603,9 +4615,9 @@
+@@ -4603,9 +4615,9 @@ int number;
    }
  
    /* Now find the right vertex. */
@@ -412,7 +406,7 @@ diff -r c15e09ac5297 -r 0e6dea64b385 triangle.c
    return (vertex) (foundvertex + m->vertices.itembytes * (number - current));
  }
  
-@@ -4883,6 +4895,15 @@
+@@ -4883,6 +4895,15 @@ struct osub *newsubseg;
  /*                                                                           */
  /*****************************************************************************/
  
@@ -428,7 +422,7 @@ diff -r c15e09ac5297 -r 0e6dea64b385 triangle.c
  void exactinit()
  {
    REAL half;
-@@ -4909,6 +4930,13 @@
+@@ -4909,6 +4930,13 @@ void exactinit()
  #endif /* not SINGLE */
    _FPU_SETCW(cword);
  #endif /* LINUX */
@@ -442,7 +436,7 @@ diff -r c15e09ac5297 -r 0e6dea64b385 triangle.c
  
    every_other = 1;
    half = 0.5;
-@@ -7649,7 +7677,7 @@
+@@ -7649,7 +7677,7 @@ struct otri *searchtri;
    char *firsttri;
    struct otri sampletri;
    vertex torg, tdest;
@@ -451,7 +445,7 @@ diff -r c15e09ac5297 -r 0e6dea64b385 triangle.c
    REAL searchdist, dist;
    REAL ahead;
    long samplesperblock, totalsamplesleft, samplesleft;
-@@ -7721,11 +7749,11 @@
+@@ -7721,11 +7749,11 @@ struct otri *searchtri;
        population = totalpopulation;
      }
      /* Find a pointer to the first triangle in the block. */
@@ -466,7 +460,7 @@ diff -r c15e09ac5297 -r 0e6dea64b385 triangle.c
  
      /* Choose `samplesleft' randomly sampled triangles in this block. */
      do {
-@@ -13882,6 +13910,162 @@
+@@ -13882,6 +13910,162 @@ char *string;
  /*                                                                           */
  /*****************************************************************************/
  
@@ -629,7 +623,7 @@ diff -r c15e09ac5297 -r 0e6dea64b385 triangle.c
  #ifndef TRILIBRARY
  
  #ifdef ANSI_DECLARATORS
-@@ -14072,6 +14256,8 @@
+@@ -14072,6 +14256,8 @@ FILE **polyfile;
  }
  
  #endif /* not TRILIBRARY */
@@ -638,7 +632,7 @@ diff -r c15e09ac5297 -r 0e6dea64b385 triangle.c
  
  /*****************************************************************************/
  /*                                                                           */
-@@ -14489,6 +14675,92 @@
+@@ -14489,6 +14675,92 @@ struct behavior *b;
  /*                                                                           */
  /*****************************************************************************/
  
@@ -731,7 +725,7 @@ diff -r c15e09ac5297 -r 0e6dea64b385 triangle.c
  #ifdef TRILIBRARY
  
  #ifdef ANSI_DECLARATORS
-@@ -14623,6 +14895,13 @@
+@@ -14623,6 +14895,13 @@ char **argv;
    finishfile(outfile, argc, argv);
  #endif /* not TRILIBRARY */
  }
