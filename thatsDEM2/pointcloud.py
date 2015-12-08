@@ -22,12 +22,12 @@ import os
 import numpy as np
 from math import ceil
 from osgeo import gdal
-import thatsDEM.triangle as triangle
-import thatsDEM.array_geometry as array_geometry
-import thatsDEM.vector_io as vector_io
+import thatsDEM2.triangle as triangle
+import thatsDEM2.array_geometry as array_geometry
+import thatsDEM2.vector_io as vector_io
 # Should perhaps be moved to method in order to speed up import...
-import thatsDEM.grid as grid
-import thatsDEM.remote_files as remote_files
+import thatsDEM2.grid as grid
+import thatsDEM2.remote_files as remote_files
 #Import las reader modules
 try:
     import laspy.file
