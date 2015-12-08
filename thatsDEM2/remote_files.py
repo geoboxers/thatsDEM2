@@ -1,4 +1,5 @@
-# Copyright (c) 2015, Danish Geodata Agency <gst@gst.dk>
+# Original work Copyright (c) 2015, Danish Geodata Agency <gst@gst.dk>
+# Modified work Copyright (c) 2015, Geoboxers <info@geoboxers.com>
 #
 # Permission to use, copy, modify, and/or distribute this software for any
 # purpose with or without fee is hereby granted, provided that the above
@@ -16,7 +17,7 @@ import os
 import tempfile
 import subprocess
 import sys
-
+import time
 
 def is_remote(path):
     """Determine whether a file is in a remote location (which can be handled) based on prefix of connection string."""
@@ -26,7 +27,7 @@ def is_remote(path):
     return False
 
 
-def get_local_file(remote_path):
+def get_local_file(remote_path, retries=0, wait=0):
     """
     Download a file from a remote location to a temporary file.
     Return path to temporary file. It is the users responsibility to delete the file.
@@ -44,16 +45,26 @@ def get_local_file(remote_path):
     shell = False
     if not sys.platform.startswith("win"):
         shell = True
-    prc = subprocess.Popen(
-        cmd,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        bufsize=-1,
-        shell=shell)
-    stdout, stderr = prc.communicate()
-    rc = prc.poll()
-    if rc != 0:
-        print(stderr)
-        raise Exception("Bad return code from " + cmd + " : {0:d}".format(rc))
-    assert(os.path.exists(f.name))
+    while retries > 0:
+        try:
+            prc = subprocess.Popen(
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                bufsize=-1,
+                shell=shell)
+            stdout, stderr = prc.communicate()
+            rc = prc.poll()
+            if rc != 0:
+                print(stderr)
+                raise Exception("Bad return code from " + cmd + " : {0:d}".format(rc))
+            assert(os.path.exists(f.name))
+        except Exception as e:
+            if retries > 0:
+                if wait > 0:
+                    time.sleep(wait)
+                retries -= 1
+                continue
+            else:
+                raise e
     return f.name
