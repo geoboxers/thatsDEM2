@@ -72,12 +72,10 @@ def fromAny(path, **kwargs):
             pc = fromNpy(path, **kwargs)
         elif ext == ".txt":
             pc = fromText(path, **kwargs)
+        elif ext == ".npz":
+            pc =fromNpz(path, **kwargs)
         elif ext == ".tif" or ext == ".tiff" or ext == ".asc":
             pc = fromGrid(path, **kwargs)
-        elif ext == ".bin":
-            pc = fromBinary(path, **kwargs)
-        elif ext == ".patch":
-            pc = fromPatch(path, **kwargs)  # so we can look at patch-files...
         else:
             pc = fromOGR(path, **kwargs)
     finally:
@@ -136,44 +134,21 @@ def fromNpy(path, **kwargs):
     return Pointcloud(xyz[:, 0:2], xyz[:, 2])
 
 
-def fromPatch(path, **kwargs):
+def fromNpz(path, **kwargs):
     """
-    Load a pointcloud from a platform dependent numpy .patch file.
-    This is a 'classification remapping file' with entries x y z c1 (original class) p (source id) c2 (to class) stored as doubles.
-    Will keep the output class in the returned pointcloud.
+    Load a pointcloud from a platform independent numpy .npz file.
+    Restoring attributes by keys is supported.
     Args:
-        path: path to patch file.
+        path: path to .npz file.
     Returns:
         A pointcloud.Pointcloud object.
     """
-    xyzcpc = np.fromfile(path, dtype=np.float64)
-    n = xyzcpc.size
-    assert(n % 6 == 0)
-    n_recs = int(n / 6)
-    xyzcpc = xyzcpc.reshape((n_recs, 6))
-    # use new class as class
-    return Pointcloud(xyzcpc[:, :2], xyzcpc[:, 2], c=xyzcpc[
-                      :, 5].astype(np.int32), pid=xyzcpc[:, 4].astype(np.int32))
-
-
-def fromBinary(path, **kwargs):
-    """
-    Load a pointcloud from a platform dependent numpy binary file.
-    This is a binary file with entries x y z c (original class) p (source id) stored as doubles.
-    Args:
-        path: path to binary file.
-    Returns:
-        A pointcloud.Pointcloud object.
-    """
-    # This is the file format we originally decided to use for communicating with haystack.exe. Now using .patch files instead.
-    # A quick and dirty format. Would be better to use e.g. npy or npz platform independent files.
-    xyzcp = np.fromfile(path, dtype=np.float64)
-    n = xyzcp.size
-    assert(n % 5 == 0)
-    n_recs = int(n / 5)
-    xyzcp = xyzcp.reshape((n_recs, 5))
-    return Pointcloud(xyzcp[:, :2], xyzcp[:, 2], c=xyzcp[:, 3].astype(
-        np.int32), pid=xyzcp[:, 4].astype(np.int32))
+    npzfile = np.load(path)
+    assert "xy" in npzfile.files
+    assert "z" in npzfile.files
+    attrs = set(npzfile.files).difference({"xy", "z"})
+    pc = Pointcloud(npzfile["xy"], npzfile["z"], **{a: npzfile[a] for a in attrs})
+    return pc
 
 
 def mesh_as_points(shape, geo_ref):
@@ -278,7 +253,7 @@ def empty_like(pc):
     """
     out = Pointcloud(np.empty((0, 2), dtype=np.float64), np.empty((0,), dtype=np.float64))
     for a in pc.attributes:
-        array = getattr(pc, a)
+        array = pc.get_array(a)
         out.set_attribute(a, np.empty((0,), dtype=array.dtype))
     return out
 
@@ -322,7 +297,10 @@ class Pointcloud(object):
         else:
             object.__setattr__(self, name, value)
                 
-            
+    def __getitem__(self, i):
+        """Return a dict with values at a specific index"""
+        return {a: self.get_array(a)[i] for a in self.__pc_attrs}
+    
     @property
     def attributes(self):
         """Return the attributes minus xy and z"""
@@ -938,39 +916,26 @@ class Pointcloud(object):
         assert((toE != geoid.nd_val).all())
         self.z -= toE
 
-    def set_class(self, c):
-        """Explicitely set the class attribute to be c for all points."""
-        self.c = np.ones(self.z.shape, dtype=np.int32) * c
+   
     # dump methods
 
-    def dump_csv(self, f, callback=None):
+    def dump_csv(self, path, delim=None):
         """
         Dump the pointcloud as a csv file. Will dump available attributes, except for return_number.
         Args:
             f: A file pointer
             callback: An optional method to use for logging.
         """
-        # dump as a csv-file - this is gonna be slow. TODO: refactor a bit...
-        f.write("x,y,z")
-        has_c = False
-        if self.c is not None:
-            f.write(",c")
-            has_c = True
-        has_id = False
-        if self.pid is not None:
-            f.write(",strip")
-            has_id = True
-        f.write("\n")
-        n = self.get_size()
-        for i in xrange(n):
-            f.write("{0:.2f},{1:.2f},{2:.2f}".format(self.xy[i, 0], self.xy[i, 1], self.z[i]))
-            if has_c:
-                f.write(",{0:d}".format(self.c[i]))
-            if has_id:
-                f.write(",{0:d}".format(self.pid[i]))
-            f.write("\n")
-            if callback is not None and i > 0 and i % 1e4 == 0:
-                callback(i)
+        if not delim:
+            delim = " "
+        header = "x%sy%sz" % (delim, delim)
+        for a in self.attributes:
+            header += "%s%s" % (delim,a)
+        fmt = "{xy:%s}"
+        with open(path, "w") as f:
+            f.write(header+"\n")
+            for row in self:
+                f.write(fmt.format(row['xy'][0], row['xy'][1]))
 
     def dump_txt(self, path):
         """Just dump the xyz attrs of a pointcloud as a whitespace separated text file."""
@@ -978,24 +943,18 @@ class Pointcloud(object):
         np.savetxt(path, xyz)
 
     def dump_npy(self, path):
+        """Dump just xy and z (stacked) as a npy-file""" 
         xyz = np.column_stack((self.xy, self.z))
         np.save(path, xyz)
 
-    def dump_bin(self, path):
+    def dump_npz(self, path, compressed=False):
+        """Dump the full pointcloud, including all attrs as a npz-file.
+        If compressed is True, store in compressed format using savez_compressed
         """
-        Dump the pointcloud as a (platform dependent) binary file. Each entry will consists of x,y,z,class,pid as doubles.
-        Must have classification and point source id attributes.
-        Args:
-            path: Filename to dump to.
-        """
-        assert(self.c is not None)
-        assert(self.pid is not None)
-        xyzcp = np.column_stack(
-            (self.xy, self.z, self.c.astype(
-                np.float64), self.pid.astype(
-                np.float64))).astype(
-            np.float64)
-        xyzcp.tofile(path)
+        if compressed:
+            np.savez_compressed(path, **{a: self.get_array(a) for a in self.__pc_attrs})
+        else:
+            np.savez(path, **{a: self.get_array(a) for a in self.__pc_attrs})
 
     
     # Filterering methods below...
@@ -1328,8 +1287,11 @@ class LidarPointcloud(Pointcloud):
     
     def __init__(self, xy, z, **pc_attrs):
         Pointcloud.__init__(self, xy, z, **pc_attrs)
-  
-            
+
+    def set_class(self, c):
+        """Explicitely set the class attribute to be c for all points."""
+        self.set_attribute("c", np.ones(self.z.shape, dtype=np.uint8) * c)
+
     def cut_to_strip(self, pid):
         """
         Cut the pointcloud to the points with a specific point source id.
@@ -1405,39 +1367,4 @@ class LidarPointcloud(Pointcloud):
     def get_return_numbers(self):
         """Return the list of unique return numbers (rn_min,...,rn_max)"""
         return self.get_unique_attribute_values("rn")
-    
-        
-        
 
-
-def unit_test(path):
-    print("Reading all")
-    pc1 = fromLAS(path)
-    extent = pc1.get_bounds()
-    rx = extent[2] - extent[0]
-    ry = extent[3] - extent[1]
-    rx *= 0.2
-    ry *= 0.2
-    crop = extent + (rx, ry, -rx, -ry)
-    pc1 = pc1.cut_to_box(*crop)
-    print("Reading filtered")
-    pc2 = fromLAS(path, xy_box=crop)
-    assert(pc1.get_size() == pc2.get_size())
-    assert((pc1.get_classes() == pc2.get_classes()).all())
-    pc1.sort_spatially(1)
-    assert((pc1.get_classes() == pc2.get_classes()).all())
-    pc2.sort_spatially(1)
-    z1 = pc1.min_filter(1)
-    z2 = pc2.min_filter(1)
-    assert((z1 == z2).all())
-    assert((z1 <= pc1.z).all())
-    del pc2
-    print("Checking 'nearest' filter")
-    idx = pc1.nearest_filter(1, pc1.xy)
-    should_be = np.arange(0,idx.shape[0], dtype=np.int32)
-    M= (idx!=should_be)
-    I = np.where(M)[0]
-    for i in I:
-        i2 = idx[i]
-        print pc1.xy[i], pc1.z[i], pc1.xy[i2], pc1.z[i2]
-    return 0
