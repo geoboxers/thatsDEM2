@@ -10,13 +10,13 @@ Highly modified - and thus renamed thatsDEM2
 Pull the repository and do the following - requires Scons!
 
 ```
-#!cmd
 
 > python build.py
 
 ```
 Use --debug for a debug build.
-Will require Mingw64 on Windows (setup a proper environment or run from a Mingw64 shell)
+Will require Mingw64 on Windows (setup a proper environment or run from a Mingw64 shell).
+
 
 ### Installation ###
 There is no setup.py. You'll need to e.g. modify PYTHONPATH.
@@ -25,7 +25,6 @@ There is no setup.py. You'll need to e.g. modify PYTHONPATH.
 Can be run with nose:
 
 ```
-#!cmd
 
 > nosetests -v
 
