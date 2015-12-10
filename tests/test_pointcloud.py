@@ -11,6 +11,7 @@ import time
 import logging
 import numpy as np
 import tempfile
+import json
 from thatsDEM2 import pointcloud
 
 LOG = logging.getLogger(__name__)
@@ -187,6 +188,19 @@ class TestPointcloud(unittest.TestCase):
         pc_rest = pointcloud.from_npz(path)
         self.assertTrue((pc_rest.xy == pc_rest.xy).all())
         self.assertTrue((pc_rest.a == pc.a).all())
+        os.remove(path)
+    
+    def test_dump_ogr(self):
+        LOG.info("Test pointcloud dump_ogr")
+        pc = pointcloud.from_array(np.arange(100).reshape((10,10)), [0, 1, 0, 10, 0, -1])
+        pc.set_attribute("a", np.arange(100))
+        path = self._get_named_temp_file(".geojson")
+        pc.dump_new_ogr_datasource(path, fmt="GEOJson")
+        # TODO: restore again...
+        with open(path) as f:
+            obj = json.load(f)
+            self.assertTrue("features" in obj)
+            self.assertEqual(len(obj["features"]), pc.size)
         os.remove(path)
         
 if __name__ == "__main__":

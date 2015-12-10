@@ -21,14 +21,14 @@ import sys
 import os
 import numpy as np
 from math import ceil
-from osgeo import gdal
+from osgeo import gdal, ogr
 import thatsDEM2.triangle as triangle
 import thatsDEM2.array_geometry as array_geometry
 import thatsDEM2.vector_io as vector_io
 # Should perhaps be moved to method in order to speed up import...
 import thatsDEM2.grid as grid
 import thatsDEM2.remote_files as remote_files
-#Import las reader modules
+# Import las reader modules
 try:
     import laspy.file
 except ImportError:
@@ -42,9 +42,27 @@ except Exception:
 else:
     HAS_SLASH = True
 
-    
+
 class InvalidArrayError(Exception):
     pass
+
+
+def npytype2ogrtype(dtype):
+    """Impoverished mapping between numpy dtypes and OGR field types."""
+    if issubclass(dtype.type, np.float):
+        return ogr.OFTReal
+    elif issubclass(dtype.type, np.integer):
+        return ogr.OFTInteger
+    raise TypeError("dtype cannot be mapped to an OGR type.")
+
+
+def ogrtype2npytype(ogrtype):
+    """Impoverished mapping between OGR field types and numpy dtypes."""
+    if ogrtype == ogr.OFTReal:
+        return np.float64
+    elif ogrtype == ogr.OFTInteger:
+        return np.int32
+    raise TypeError("OGR type cannot be mapped to a numpy dtype.")
 
 
 def from_any(path, **kwargs):
@@ -73,7 +91,7 @@ def from_any(path, **kwargs):
         elif ext == ".txt":
             pc = from_text(path, **kwargs)
         elif ext == ".npz":
-            pc =from_npz(path, **kwargs)
+            pc = from_npz(path, **kwargs)
         elif ext == ".tif" or ext == ".tiff" or ext == ".asc":
             pc = from_grid(path, **kwargs)
         else:
@@ -102,6 +120,7 @@ def from_las(path, include_return_number=False, **kwargs):
     else:
         raise Exception("Laspy and slash not available.")
 
+
 def from_slash(path, include_return_number=False, **kwargs):
     plas = slash.LasFile(path)
     r = plas.read_records(return_ret_number=include_return_number)
@@ -109,18 +128,19 @@ def from_slash(path, include_return_number=False, **kwargs):
     xy = r["xy"]
     z = r["z"]
     for key in r.keys():
-        if key in ("xy","z") or r[key] is None:
+        if key in ("xy", "z") or r[key] is None:
             del r[key]
     return LidarPointcloud(xy, z, **r)
 
+
 def from_laspy(path, **kwargs):
     plas = laspy.file.File(path)
-    pc = LidarPointcloud(np.column_stack((plas.x,plas.y)),
-                         plas.z, c=plas.raw_classification, 
+    pc = LidarPointcloud(np.column_stack((plas.x, plas.y)),
+                         plas.z, c=plas.raw_classification,
                          pid=plas.pt_src_id)
     plas.close()
     return pc
-    
+
 
 def from_npy(path, **kwargs):
     """
@@ -260,10 +280,10 @@ def empty_like(pc):
 
 class Pointcloud(object):
     """
-    Pointcloud class constructed from a xy and a z array. 
+    Pointcloud class constructed from a xy and a z array.
     Additional properties given in pc_attrs must be 1d numpy arrays.
     Pointcloud properties as well as xy and z will be directly modifiable by design,
-    for example like pc.xy += 1.35 and pc.c[pc.c == 4] = 5, 
+    for example like pc.xy += 1.35 and pc.c[pc.c == 4] = 5,
     but make sure you know what you're doing in order to keep consistency in sizes.
     And note that if you do direct modifications like that, derived attributes like
     triangulation, sorting and bounding box may be inconsistent - remember to clear
@@ -275,7 +295,7 @@ class Pointcloud(object):
         z = self._validate_array("z", z, check_size=False)
         if z.shape[0] != xy.shape[0]:
             raise ValueError("z must have length equal to number of xy-points")
-        self.__pc_attrs = {"xy","z"}  # All pointcloudy arrays, including xy and z
+        self.__pc_attrs = {"xy", "z"}  # All pointcloudy arrays, including xy and z
         self.xy = xy
         self.z = z
         # Derived attrs
@@ -283,7 +303,7 @@ class Pointcloud(object):
         # store the additional attributes
         for a in pc_attrs:
             self.set_attribute(a, pc_attrs[a])
-            
+
     def __setattr__(self, name, value):
         """Try to keep consistency if pointcloud attributes are set directly"""
         # By logic shortcut we can ALWAYS add a new attribute
@@ -293,19 +313,19 @@ class Pointcloud(object):
                 self._set_array(name, value, True)
             except Exception as e:
                 raise InvalidArrayError(str(e))
-            
+
         else:
             object.__setattr__(self, name, value)
-                
+
     def __getitem__(self, i):
         """Return a dict with values at a specific index"""
         return {a: self.get_array(a)[i] for a in self.__pc_attrs}
-    
+
     @property
     def attributes(self):
         """Return the attributes minus xy and z"""
-        return self.__pc_attrs.difference({"xy","z"})
-    
+        return self.__pc_attrs.difference({"xy", "z"})
+
     def set_attribute(self, name, value):
         """
         Set or add a an additional pointcloud attribute.
@@ -313,15 +333,15 @@ class Pointcloud(object):
             name: name of attribute
             array: array like, must have dimension 1 and same size as self.
         """
-        if name in ("xy","z"):
+        if name in ("xy", "z"):
             raise ValueError("Name of an additional attribute cannot be xy or z")
-        
+
         self.set_array(name, value)
 
     def _validate_array(self, name, value, check_size=True):
         """Do the array checking stuff for all arrays:
         xy, z as well as additional attributes"""
-   
+
         value = np.asarray(value)
         if name == "xy" or name == "z":
             value = np.require(value, requirements=['A', 'O', 'C'], dtype=np.float64)
@@ -333,15 +353,14 @@ class Pointcloud(object):
             assert value.ndim == 1
         else:
             assert value.ndim == 2
-       
+
         return value
-    
+
     def set_array(self, name, array):
-        """A method to do the array checking stuff and 
+        """A method to do the array checking stuff and
         set array for all pointcloudy arrays, including xy and z"""
         self._set_array(name, array, True)
-        
-    
+
     def _set_array(self, name, array, size_check=False):
         """Internal version of set array, with no size checks"""
         # Unless someone tampers with __pc_attrs or deletes attributes,
@@ -350,22 +369,22 @@ class Pointcloud(object):
         array = self._validate_array(name, array, size_check)
         self.__pc_attrs.add(name)
         object.__setattr__(self, name, array)
-        
+
     def get_array(self, name):
         if name in self.__pc_attrs:
             return self.__dict__[name]
         raise ValueError("Pointcloud does not have %s attribute" % name)
-        
+
     def remove_attribute(self, name):
         if name in self.attributes:
             delattr(self, name)
             self.__pc_attrs.remove(name)
-        
+
     def get_unique_attribute_values(self, name):
         if name in self.attributes:
             return np.unique(self.get_array(name))
         raise ValueError("Pointcloud does not have %s attribute" % name)
-        
+
     def extend(self, other, least_common=False):
         """
         Extend the pointcloud 'in place' by adding another pointcloud. Attributtes of current pointcloud must be a subset of attributes of other.
@@ -379,7 +398,7 @@ class Pointcloud(object):
             raise ValueError("Other argument must be a Pointcloud")
         common = self.attributes.intersection(other.attributes)
         additional = self.attributes.difference(common)
-        if len(additional)>0:
+        if len(additional) > 0:
             if not least_common:
                 raise ValueError("Other pointcloud does not have all attributes of self.")
             # else delete additional
@@ -387,16 +406,16 @@ class Pointcloud(object):
                 self.remove_attribute(a)
         self.clear_derived_attrs()
         for a in self.__pc_attrs:
-           # Will not invoke __setattr__
-           self._set_array(a, np.concatenate((self.get_array(a), other.get_array(a))))
-                        
+            # Will not invoke __setattr__
+            self._set_array(a, np.concatenate((self.get_array(a), other.get_array(a))))
+
     def thin(self, I):
         """
         Modify the pointcloud 'in place' by slicing to a mask or index array.
         Args:
             I: Mask, index array (1d) or slice to use for fancy numpy indexing.
         """
-        #modify in place
+        # Modify in place
         self.clear_derived_attrs()
         for a in self.__pc_attrs:
             self._set_array(a, self.get_array(a)[I])
@@ -415,7 +434,7 @@ class Pointcloud(object):
         for a in self.attributes:
             pc.set_attribute(a, self.get_array(a)[mask])
         return pc
-    
+
     def sort_spatially(self, cs, shape=None, xy_ul=None, keep_sorting=False):
         """
         Primitive spatial sorting by creating a 'virtual' 2D grid covering the pointcloud and thus a 1D index by consecutive c style numbering of cells.
@@ -455,7 +474,7 @@ class Pointcloud(object):
             self.sorting_indices = I
         self.index_header = np.asarray((ncols, nrows, x1, y2, cs), dtype=np.float64)
         return self
-    
+
     def sort_back(self):
         """If pc is sorted, sort it back... in place ....
         """
@@ -640,15 +659,14 @@ class Pointcloud(object):
             tol_xy: maximal size of xy bounding box.
             tol_z: maximal size of z bounding box.
         """
-        tanv2 = np.tan(max_angle * np.pi / 180.0)**2  # tanv squared
+        tanv2 = np.tan(max_angle * np.pi / 180.0) ** 2  # tanv squared
         geom = self.get_triangle_geometry()
         self.triangle_validity_mask = (geom < (tanv2, tol_xy, tol_z)).all(axis=1)
 
     def get_validity_mask(self):
         # just return the validity mask
         return self.triangle_validity_mask
-    
-    
+
     def get_grid(self, ncols=None, nrows=None, x1=None, x2=None, y1=None, y2=None,
                  cx=None, cy=None, nd_val=-999, method="triangulation", attr="z", srad=None):
         """
@@ -664,7 +682,7 @@ class Pointcloud(object):
             cx: horisontal cell size.
             cy: vertical cell size.
             nd_val: grid no data value.
-            method: One of the supported method names: 
+            method: One of the supported method names:
                     triangulation, return_triangles, cellcount, most_frequent,
                     idw_filter, mean_filter, max_filter, min_filter, median_filter, var_filter,
                     density_filter
@@ -677,7 +695,8 @@ class Pointcloud(object):
         Returns:
             A grid.Grid object and a grid.Grid object with triangle sizes if 'return_triangles' is specified.
         Raises:
-            ValueError: If unable to calculate grid size or location from supplied input or using triangulation and triangulation not calculated or supplied with invalid method name.
+            ValueError: If unable to calculate grid size or location from supplied input,
+                        or using triangulation and triangulation not calculated or supplied with invalid method name.
         """
         # x1 = left 'corner' of "pixel", not center.
         # y2 = upper 'corner', not center.
@@ -710,18 +729,18 @@ class Pointcloud(object):
             cy = (y2 - y1) / float(nrows)
         # geo ref gdal style...
         geo_ref = [x1, cx, 0, y2, 0, -cy]
-        
+
         if method in ("triangulation", "return_triangles"):
             if self.triangulation is None:
                 raise ValueError("Create a triangulation first...")
             val = np.require(self.get_array(attr), dtype=np.float64)
             if method == "triangulation":
                 g = self.triangulation.make_grid(
-                val, ncols, nrows, x1, cx, y2, cy, nd_val, return_triangles=False)
+                    val, ncols, nrows, x1, cx, y2, cy, nd_val, return_triangles=False)
                 return grid.Grid(g, geo_ref, nd_val)
             else:
                 g, t = self.triangulation.make_grid(
-                val, ncols, nrows, x1, cx, y2, cy, nd_val, return_triangles=True)
+                    val, ncols, nrows, x1, cx, y2, cy, nd_val, return_triangles=True)
             return grid.Grid(g, geo_ref, nd_val), grid.Grid(t, geo_ref, nd_val)
         elif method == "cellcount":  # density grid
             arr_coords = ((self.xy - (geo_ref[0], geo_ref[3])) /
@@ -741,7 +760,7 @@ class Pointcloud(object):
             val = np.require(self.get_array(attr), dtype=np.int32)
             g = grid.grid_most_frequent_value(self.xy, val, ncols, nrows, geo_ref, nd_val=nd_val)
             return g
-        elif method in ("density_filter", "idw_filter", "max_filter", 
+        elif method in ("density_filter", "idw_filter", "max_filter",
                         "min_filter", "mean_filter", "median_filter", "var_filter"):
             if self.spatial_index is None:
                 raise ValueError("Sort pointcloud first")
@@ -773,12 +792,13 @@ class Pointcloud(object):
         if self.triangulation is None:
             raise Exception("Create a triangulation first...")
         xy_in = self._validate_array("xy", xy_in, False)
-        #-2 indices signals outside triangulation, -1 signals invalid, else valid
+        # -2 indices signals outside triangulation, -1 signals invalid, else valid
         return self.triangulation.find_triangles(xy_in, mask)
 
     def find_appropriate_triangles(self, xy_in, mask=None):
         """
-        Find the (valid) containing triangles for an array of points. Either the internal triangle validity mask must be set or a mask must be supplied in call.
+        Find the (valid) containing triangles for an array of points.
+        Either the internal triangle validity mask must be set or a mask must be supplied in call.
         Args:
             xy_in: Numpy array of points ( shape (n,2), dtype float64)
             mask: Optional triangle validity mask. Will use internal triangle_validity_mask if not supplied here.
@@ -916,8 +936,54 @@ class Pointcloud(object):
         assert((toE != geoid.nd_val).all())
         self.z -= toE
 
-   
     # dump methods
+    def dump_ogr_layer(self, layer):
+        # Layer must have fields corresponding to self.attributes
+        geom_type = layer.GetGeomType()
+        if not geom_type == ogr.wkbPoint25D:
+            # TODO: handle wkbPoint
+            raise TypeError("Geometry type must be wkbPoint25D")
+        layer_defn = layer.GetLayerDefn()
+        converter_list = []
+        for a in self.attributes:
+            try:
+                t = layer_defn.GetFieldDefn(layer_defn.GetFieldIndex(a)).GetType()
+                assert t == npytype2ogrtype(self.get_array(a).dtype)
+            except Exception as e:
+                raise TypeError("Layer does not seem to have a proper field corresponding to '%s'" % a +
+                                 "\n" + str(e))
+            converter_list.append((a, float if t == ogr.OFTReal else int))
+        for row in self:
+            feature = ogr.Feature(layer_defn)
+            geom = ogr.Geometry(geom_type)
+            geom.SetPoint(0, float(row["xy"][0]), float(row["xy"][1]), float(row["z"]))
+            for field_name, converter in converter_list:
+                val = converter(row[field_name])
+                feature.SetField(field_name, val)
+            feature.SetGeometry(geom)
+            ok = layer.CreateFeature(feature)
+            assert ok == 0
+
+    def dump_new_ogr_layer(self, ds, layername="pointcloud", srs=None):
+        geom_type = ogr.wkbPoint25D
+        layer = ds.CreateLayer(layername, srs, geom_type)
+        field_list = [(a, npytype2ogrtype(self.get_array(a).dtype)) for a in self.attributes]
+        for field_name, field_type in field_list:
+            field_defn = ogr.FieldDefn(field_name, field_type)
+            ok = layer.CreateField(field_defn)
+            assert ok == 0
+        self.dump_ogr_layer(layer)
+        layer = None
+
+    def dump_new_ogr_datasource(self, cstr, fmt="ESRI Shapefile", layername="pointcloud", dsco=None, srs=None):
+        drv = ogr.GetDriverByName(fmt)
+        assert drv is not None
+        if not dsco:
+            dsco = []
+        ds = drv.CreateDataSource(cstr, dsco)
+        assert ds is not None
+        self.dump_new_ogr_layer(ds, layername, srs)
+        ds = None
 
     def dump_txt(self, path):
         """Just dump the xyz attrs of a pointcloud as a whitespace separated text file."""
@@ -925,7 +991,7 @@ class Pointcloud(object):
         np.savetxt(path, xyz)
 
     def dump_npy(self, path):
-        """Dump just xy and z (stacked) as a npy-file""" 
+        """Dump just xy and z (stacked) as a npy-file"""
         xyz = np.column_stack((self.xy, self.z))
         np.save(path, xyz)
 
@@ -938,7 +1004,6 @@ class Pointcloud(object):
         else:
             np.savez(path, **{a: self.get_array(a) for a in self.__pc_attrs})
 
-    
     # Filterering methods below...
 
     def validate_filter_args(self, rad):
@@ -947,7 +1012,7 @@ class Pointcloud(object):
             raise Exception("Build a spatial index first!")
         if rad > self.index_header[4]:
             raise Warning("Filter radius larger than cell size of spatial index will not catch all points!")
-    
+
     # '2.5D' filters
     def min_filter(self, filter_rad, xy=None, nd_val=-9999, attr="z"):
         """
@@ -963,7 +1028,7 @@ class Pointcloud(object):
             xy = self.xy
         vals = np.require(self.get_array(attr), dtype=np.float64)
         z_out = np.zeros((xy.shape[0],), dtype=np.float64)
-        
+
         array_geometry.lib.pc_min_filter(
             xy,
             self.xy,
@@ -1071,7 +1136,7 @@ class Pointcloud(object):
             self.index_header,
             xy.shape[0])
         return z_out
-        
+
     def idw_filter(self, filter_rad, xy=None, nd_val=-9999, attr="z"):
         """
         Calculate inverse distance weighted z values along self.xy or a supplied set of input points. Useful for gridding.
@@ -1097,7 +1162,7 @@ class Pointcloud(object):
             self.index_header,
             xy.shape[0])
         return z_out
-   
+
     # 'Geometric' filters
     def distance_filter(self, filter_rad, xy, nd_val=9999):
         """
@@ -1168,7 +1233,7 @@ class Pointcloud(object):
             self.index_header,
             xy.shape[0])
         return z_out
-    
+
     # 3D filters
     def ballcount_filter(self, filter_rad, xy=None, z=None, nd_val=0):
         """
@@ -1258,6 +1323,7 @@ class Pointcloud(object):
             self.xy.shape[0])
         return z_out
 
+
 class LidarPointcloud(Pointcloud):
     """
     Subclass of pointcloud with special assumptions and shortcuts
@@ -1265,8 +1331,8 @@ class LidarPointcloud(Pointcloud):
     """
     # The allowed attributes for a LidarPointcloud
     LIDAR_ATTRS = frozenset(["c", "rn", "pid", "intensity",
-    "red", "green", "blue"])
-    
+                             "red", "green", "blue"])
+
     def __init__(self, xy, z, **pc_attrs):
         Pointcloud.__init__(self, xy, z, **pc_attrs)
 
@@ -1284,7 +1350,7 @@ class LidarPointcloud(Pointcloud):
         Raises:
             ValueError: If point source id attribute is not set.
         """
-        if not "pid" in self.pc_attrs:
+        if "pid" not in self.pc_attrs:
             raise ValueError("Point source id attribute not set")
         I = (self.pid == pid)
         return self.cut(I)
@@ -1301,7 +1367,7 @@ class LidarPointcloud(Pointcloud):
             ValueError: if class attribute is not set.
         """
         # will now accept a list or another iterable...
-        if not "c" in self.attributes:
+        if "c" not in self.attributes:
             raise ValueError("Class attribute not set.")
         try:
             cs = iter(c)
@@ -1329,7 +1395,7 @@ class LidarPointcloud(Pointcloud):
         Raises:
             ValueError: if no return numbers stored.
         """
-        if not "rn" in self.pc_attrs:
+        if "rn" not in self.pc_attrs:
             raise ValueError("Return number attribute not set.")
         I = (self.rn == rn)
         return self.cut(I)
@@ -1349,4 +1415,3 @@ class LidarPointcloud(Pointcloud):
     def get_return_numbers(self):
         """Return the list of unique return numbers (rn_min,...,rn_max)"""
         return self.get_unique_attribute_values("rn")
-
