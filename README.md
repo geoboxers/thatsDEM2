@@ -37,9 +37,12 @@ Have you ever wanted to convert a laz file to a sqlite db?
 from thatsDEM2 import pointcloud
 # requires laspy or slash
 pc = pointcloud.from_las("/data/lidar.laz", attrs=("c","pid","i"))
-pc.dump_to_new_ogr_datasource("db.sqlite", "SQLITE")
+# It's gonna be a little slow... but works
+pc.dump_new_ogr_datasource("db.sqlite", "SQLITE")
 # This should be faster
 pc.dump_npz("myfile.npz", compressed=True)
+# Load back again from the db - with som sql:
+pc = pointcloud.from_ogr("db.sqlite", layersql="select * from pointcloud where c=2")
 ```
 
 
