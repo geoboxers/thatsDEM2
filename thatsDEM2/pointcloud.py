@@ -289,6 +289,12 @@ def from_ogr(cstr, layername=None, layersql=None, extent=None):
         ds.ReleaseResultSet(layer)
     layer = None
     ds = None
+    # not to double up memory consumption - make conversion here, rather
+    # than in the pointlcoud constructor
+    xy = np.asarray(xy, dtype=np.float64)
+    z = np.asarray(z, dtype=np.float64)
+    for a in attrs:
+        attrs[a] = np.asarray(attrs[a], dtype=attr_types[a])
     return Pointcloud(xy, z, **attrs)
 
 
