@@ -35,9 +35,11 @@ Can be run with nose:
 Have you ever wanted to convert a laz file to a sqlite db?
 ```python
 from thatsDEM2 import pointcloud
+# requires laspy or slash
 pc = pointcloud.from_las("/data/lidar.laz", attrs=("c","pid","i"))
 pc.dump_to_new_ogr_datasource("db.sqlite", "SQLITE")
 # This should be faster
 pc.dump_npz("myfile.npz", compressed=True)
 ```
+
 
