@@ -104,40 +104,66 @@ def from_any(path, **kwargs):
 
 # read a las file and return a pointcloud - spatial selection by xy_box
 # (x1,y1,x2,y2) and / or z_box (z1,z2) and/or list of classes...
-def from_las(path, include_return_number=False, **kwargs):
+def from_las(path, attrs=("c", "pid")):
     """
     Load a pointcloud from las / laz format via slash.LasFile. Laz reading currently requires that laszip-cli is findable.
     Args:
-        path: path to las / laz file.
-        include_return_number: bool, indicates whether return number should be included.
+        path: Path to las / laz file.
+        attrs: Sequence of attributes to include.
+               Must be subset of LidarPointcloud.LIDAR_ATTRS
     Returns:
         A pointcloud.Pointcloud object.
     """
+    if not set(attrs).issubset(set(LidarPointcloud.LIDAR_ATTRS)):
+        raise ValueError("Only attrs defined in Pointcloud.LIDAR_ATTRS allowed here.")
     if HAS_LASPY:
-        return from_laspy(path, **kwargs)
+        return from_laspy(path, attrs)
     elif HAS_SLASH:
-        return from_slash(path, **kwargs)
+        return from_slash(path, attrs)
     else:
-        raise Exception("Laspy and slash not available.")
+        raise Exception("No las reader library available.")
 
 
-def from_slash(path, include_return_number=False, **kwargs):
+def from_slash(path, attrs=("c", "pid")):
+    """
+    Use slash to read las /laz from path.
+    Args:
+        path: path to las/laz file.
+        attrs: A subset of the short names in Pointcloud.LIDAR_ATTRS.
+    Returns:
+        a LidarPointcloud
+    """
     plas = slash.LasFile(path)
-    r = plas.read_records(return_ret_number=include_return_number)
+    r = plas.read_records(include_return_number=("rn" in attrs))
     plas.close()
     xy = r["xy"]
     z = r["z"]
-    for key in r.keys():
-        if key in ("xy", "z") or r[key] is None:
-            del r[key]
+    for a in r.keys():
+        if a in ("xy", "z") or r[a] is None:
+            del r[a]
     return LidarPointcloud(xy, z, **r)
 
+# Translation of short lidar attr codes to laspy names
+LASPY_ATTRS = {"c": "raw_classification",
+               "pid": "pt_src_id",
+               "rn": "return_num",
+               "i": "intensity"
+               }
+               
 
-def from_laspy(path, **kwargs):
+def from_laspy(path, attrs=("c", "pid")):
+    """
+    Use laspy to read a las/laz file.
+    Args:
+        path: path to las/laz file.
+        attrs: A subset of the short names in Pointcloud.LIDAR_ATTRS.
+    Returns:
+        A LidarPointcloud
+    """
     plas = laspy.file.File(path)
-    pc = LidarPointcloud(np.column_stack((plas.x, plas.y)),
-                         plas.z, c=plas.raw_classification,
-                         pid=plas.pt_src_id)
+    xy = np.column_stack((plas.x, plas.y))
+    plas_attrs = {a: getattr(plas, LASPY_ATTRS.get(a, a)) for a in attrs} 
+    pc = LidarPointcloud(xy, plas.z, **plas_attrs)
     plas.close()
     return pc
 
@@ -273,7 +299,7 @@ def from_ogr(cstr, layername=None, layersql=None, extent=None):
         attr_types[name] = dtype
     attrs = {name: [] for name in attr_types}
     xy = []
-    z  = []
+    z = []
     # Now do the long loop over features
     for feat in layer:
         geom = feat.GetGeometryRef()
@@ -986,7 +1012,7 @@ class Pointcloud(object):
                 assert t == npytype2ogrtype(self.get_array(a).dtype)
             except Exception as e:
                 raise TypeError("Layer does not seem to have a proper field corresponding to '%s'" % a +
-                                 "\n" + str(e))
+                                "\n" + str(e))
             converter_list.append((a, float if t == ogr.OFTReal else int))
         for row in self:
             feature = ogr.Feature(layer_defn)
@@ -1364,9 +1390,19 @@ class LidarPointcloud(Pointcloud):
     Subclass of pointcloud with special assumptions and shortcuts
     designed for lidar pointclouds.
     """
-    # The allowed attributes for a LidarPointcloud
-    LIDAR_ATTRS = frozenset(["c", "rn", "pid", "intensity",
-                             "red", "green", "blue"])
+    # The 'standard' attributes for a LidarPointcloud
+    # With short name to long
+    LIDAR_ATTRS = {"c": "classification",
+                   "rn": "return_number",
+                   "pid": "point_source_id",
+                   "i": "intensity",
+                   "red": "red",
+                   "green": "green",
+                   "blue": "blue",
+                   "sa": "scan_angle",
+                   "sd": "scan_direction",
+                   "t": "time"
+                   }
 
     def __init__(self, xy, z, **pc_attrs):
         Pointcloud.__init__(self, xy, z, **pc_attrs)
