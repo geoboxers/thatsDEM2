@@ -1466,7 +1466,7 @@ class LidarPointcloud(Pointcloud):
         Raises:
             ValueError: if no return numbers stored.
         """
-        if "rn" not in self.pc_attrs:
+        if "rn" not in self.attributes:
             raise ValueError("Return number attribute not set.")
         I = (self.rn == rn)
         return self.cut(I)
