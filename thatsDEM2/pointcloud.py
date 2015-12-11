@@ -14,7 +14,7 @@
 #
 ############################
 # Pointcloud utility class - wraps many useful methods
-##
+# silyko, 2014 - 2016
 ############################
 
 import sys
@@ -237,7 +237,7 @@ def from_text(path, delim=None, **kwargs):
         A pointcloud.Pointcloud object containg only the raw x,y and z coords.
     """
     points = np.loadtxt(path, delimiter=delim)
-    if points.ndim == 1:
+    if points.ndim == 1:  # Just a single point?
         points = points.reshape((1, 3))
     return Pointcloud(points[:, :2], points[:, 2])
 
@@ -245,7 +245,7 @@ def from_text(path, delim=None, **kwargs):
 # TODO: handle multipoint features....
 
 
-def from_ogr(path, layername=None, layersql=None, extent=None):
+def from_ogr(cstr, layername=None, layersql=None, extent=None):
     """
     Load a pointcloud from an OGR 3D-point datasource (only geometries).
     Args:
@@ -256,11 +256,40 @@ def from_ogr(path, layername=None, layersql=None, extent=None):
     Returns:
         A pointcloud.Pointcloud object containg only the raw x,y and z coords.
     """
-    geoms = vector_io.get_geometries(path, layername, layersql, extent)
-    points = array_geometry.ogrpoints2array(geoms)
-    if points.ndim == 1:
-        points = points.reshape((1, 3))
-    return Pointcloud(points[:, :2], points[:, 2])
+    ds, layer = vector_io.open(cstr, layername, layersql, extent)
+    layer_defn = layer.GetLayerDefn()
+    geom_type = layer.GetGeomType()
+    assert geom_type in [ogr.wkbPoint, ogr.wkbPoint25D]
+    # Determine what attributes to keep...
+    attr_types = {}
+    for field in range(layer_defn.GetFieldCount()):
+        field_defn = layer_defn.GetFieldDefn(field)
+        name = field_defn.GetName()
+        ogr_type = field_defn.GetType()
+        try:
+            dtype = ogrtype2npytype(ogr_type)
+        except Exception, e:
+            continue
+        attr_types[name] = dtype
+    attrs = {name: [] for name in attr_types}
+    xy = []
+    z  = []
+    # Now do the long loop over features
+    for feat in layer:
+        geom = feat.GetGeometryRef()
+        xy.append(geom.GetPoint_2D(0))
+        for a in attrs:
+            attrs[a].append(feat[a])
+        if geom.GetCoordinateDimension() == 3:
+            z.append(geom.GetZ(0))
+    if not z:
+        assert "z" in attrs
+        z = attrs.pop("z")
+    if layersql:
+        ds.ReleaseResultSet(layer)
+    layer = None
+    ds = None
+    return Pointcloud(xy, z, **attrs)
 
 
 def empty_like(pc):

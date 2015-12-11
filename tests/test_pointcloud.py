@@ -201,6 +201,10 @@ class TestPointcloud(unittest.TestCase):
             obj = json.load(f)
             self.assertTrue("features" in obj)
             self.assertEqual(len(obj["features"]), pc.size)
+        pc_restore = pointcloud.from_ogr(path)
+        self.assertItemsEqual(pc.attributes, pc_restore.attributes)
+        self.assertAlmostEqual(np.fabs(pc.xy - pc_restore.xy).max(), 0, 3)
+        self.assertAlmostEqual(np.fabs(pc.z - pc_restore.z).max(), 0, 3)
         os.remove(path)
         
 if __name__ == "__main__":
