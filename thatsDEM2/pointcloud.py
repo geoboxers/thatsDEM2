@@ -332,7 +332,7 @@ def empty_like(pc):
     Returns:
         Pointcloud object.
     """
-    out = Pointcloud(np.empty((0, 2), dtype=np.float64), np.empty((0,), dtype=np.float64))
+    out = pc.__class__(np.empty((0, 2), dtype=np.float64), np.empty((0,), dtype=np.float64))
     for a in pc.attributes:
         array = pc.get_array(a)
         out.set_attribute(a, np.empty((0,), dtype=array.dtype))
@@ -491,7 +491,7 @@ class Pointcloud(object):
         """
         if self.xy.size == 0:  # just return something empty to protect chained calls...
             return empty_like(self)
-        pc = Pointcloud(self.xy[mask], self.z[mask])
+        pc = self.__class__(self.xy[mask], self.z[mask])
         for a in self.attributes:
             pc.set_attribute(a, self.get_array(a)[mask])
         return pc
