@@ -85,7 +85,7 @@ def patch_triangle():
         LOG.info("ok...")
         run("git init")
         run("git add triangle.c")
-        run("git commit -m dummy --author 'NoOne <nomail@nothing>'")
+        run('git -c user.name="NoOne" -c user.email="none@nothing" commit -m dummy')
         run("git apply " + PATCH_TRIANGLE)
     except Exception as e:
         LOG.exception("Patching process failed!")
