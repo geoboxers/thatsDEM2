@@ -1,0 +1,123 @@
+{
+  "insert_after": [
+    { 
+      "line": 354,
+      "lines": [
+        "#ifdef GCC_FPU_CONTROL",
+        "#include <float.h>",
+        "#endif"
+      ]
+    },
+    {
+      "line": 314,
+      "lines": ["typedef unsigned long long PTR_AS_UINT;"]
+    },
+    {
+      "line": 4884, 
+      "lines": [
+        "", 
+        "#ifdef GCC_FPU_CONTROL", 
+        "/* cf URL http://www.cs.cmu.edu/~quake/robust.pc.html */", 
+        "void set_ctrlword(v)", 
+        "int v;", 
+        "{", 
+        "  asm(\"fldcw %0\" :: \"m\" (v));", 
+        "}", 
+        "#endif /* GCC_FPU_CONTROL */"
+      ]
+    },
+    
+    {
+      "line": 4910, 
+      "lines": [
+        "", 
+        "#ifdef GCC_FPU_CONTROL", 
+        "#ifdef SINGLE", 
+        "  set_ctrlword(4210);           /* set FPU control word for single precision */", 
+        "#else /* not SINGLE */", 
+        "  set_ctrlword(4722);           /* set FPU control word for double precision */", 
+        "#endif /* not SINGLE */", 
+        "#endif /* GCC_FPU_CONTROL */"
+      ]
+    }
+  ], 
+  "global": [
+    [
+      "x%lx", 
+      "%p"
+    ]
+  ], 
+  "local": [
+    {
+      "to": "PTR_AS_UINT", 
+      "from": "unsigned long", 
+      "lines": [
+        940, 
+        942, 
+        949, 
+        1113, 
+        1117, 
+        1122, 
+        1160, 
+        1162, 
+        1169, 
+        3893, 
+        3901, 
+        3904, 
+        3905, 
+        4010, 
+        4035, 
+        4038, 
+        4039, 
+        4094, 
+        4099, 
+        4102, 
+        4103, 
+        4131, 
+        4143, 
+        4146, 
+        4147, 
+        4199, 
+        4205, 
+        4207, 
+        4208, 
+        4228, 
+        4230, 
+        4231, 
+        4588, 
+        4605, 
+        4606, 
+        4607, 
+        7651, 
+        7723, 
+        7725, 
+        7727
+      ]
+    }, 
+    {
+      "to": "void *", 
+      "from": "unsigned long", 
+      "lines": [
+        3677, 
+        3683, 
+        3690, 
+        3697, 
+        3706, 
+        3713, 
+        3720, 
+        3726, 
+        3731, 
+        3736, 
+        3772, 
+        3777, 
+        3784, 
+        3793, 
+        3800, 
+        3807, 
+        3814, 
+        3823, 
+        3830
+      ]
+    }
+  ]
+}
