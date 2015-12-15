@@ -55,7 +55,7 @@ def patch_triangle(wrkdir, trizip=None):
     LOG.info("Starting patching process of triangle...")
     patching_exception = None
     tri_c_out = os.path.join(wrkdir, "triangle.c")
-    delete_trizip =  False
+    delete_trizip = False
     try:
         if trizip is None:
             delete_trizip = True
@@ -126,7 +126,7 @@ def build(force_triangle=False, triangle_zip=None, debug=False):
     triangle_h = os.path.join(TRIANGLE_DIR, "triangle.h")
     do_triangle |= is_newer(PATCH_TRIANGLE, triangle_h)
     triangle_libs = glob.glob(os.path.join(TRIANGLE_DIR, LIBTRIANGLE))
-    do_triangle |= not triangle_libs 
+    do_triangle |= not triangle_libs
     if do_triangle:
         patch_triangle(TRIANGLE_DIR, triangle_zip)
     LOG.info("Running SCons...")
