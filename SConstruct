@@ -18,7 +18,7 @@ if int(ARGUMENTS.get("debug", 0)):
     env.Append(CCFLAGS=["-g"])
 else:
     env.Append(CCFLAGS=["-O3"])
-env.Append(CCFLAGS=["-Wall"])
+env.Append(CCFLAGS=["-Wall","-pedantic"])
 
 # Specify librarynames - must match those specified in thatsDEM
 env["libtri"] = "triangle"

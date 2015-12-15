@@ -51,23 +51,26 @@ def is_newer(p1, p2):
     return os.path.getmtime(p1) > os.path.getmtime(p2)
 
 
-def patch_triangle(wrkdir):
+def patch_triangle(wrkdir, trizip=None):
     LOG.info("Starting patching process of triangle...")
-    LOG.info("Downloading triangle...")
     patching_exception = None
-    trizip = os.path.join(wrkdir, "triangle.zip")
     tri_c_out = os.path.join(wrkdir, "triangle.c")
+    delete_trizip =  False
     try:
-        with open(trizip, "wb") as f:
-            response = urllib2.urlopen(URL_TRIANGLE)
-            assert(response.getcode() == 200)
-            f.write(response.read())
+        if trizip is None:
+            delete_trizip = True
+            trizip = os.path.join(wrkdir, "triangle.zip")
+            LOG.info("Downloading triangle...")
+            with open(trizip, "wb") as f:
+                response = urllib2.urlopen(URL_TRIANGLE)
+                assert(response.getcode() == 200)
+                f.write(response.read())
         LOG.info("Done...")
         zf = zipfile.ZipFile(trizip)
         zf.extract("triangle.c", wrkdir)
         zf.extract("triangle.h", wrkdir)
         zf.close()
-        LOG.info("Checking md5 sum of downloaded file...")
+        LOG.info("Checking md5 sum of triangle.c...")
         with open(tri_c_out, "rb") as f:
             tri_bytes = f.read()
             m5 = md5.new(tri_bytes).digest()
@@ -111,22 +114,21 @@ def patch_triangle(wrkdir):
         with open(tri_c_out, "wb") as f:
             f.write("\n".join(lines_out))
     finally:
-        if os.path.isfile(trizip):
+        if os.path.isfile(trizip) and delete_trizip:
             os.remove(trizip)
         if patching_exception:
             raise patching_exception
 
 
-def build(force_triangle=False, debug=False):
+def build(force_triangle=False, triangle_zip=None, debug=False):
     """Decide if triangle needs to be downloaded and patched."""
     do_triangle = force_triangle
+    triangle_h = os.path.join(TRIANGLE_DIR, "triangle.h")
+    do_triangle |= is_newer(PATCH_TRIANGLE, triangle_h)
     triangle_libs = glob.glob(os.path.join(TRIANGLE_DIR, LIBTRIANGLE))
-    if len(triangle_libs) > 0:
-        libtriangle = triangle_libs[0]
-        do_triangle |= is_newer(PATCH_TRIANGLE, libtriangle)
-    do_triangle |= not os.path.isfile(os.path.join(TRIANGLE_DIR, "triangle.h"))
+    do_triangle |= not triangle_libs 
     if do_triangle:
-        patch_triangle(TRIANGLE_DIR)
+        patch_triangle(TRIANGLE_DIR, triangle_zip)
     LOG.info("Running SCons...")
     rc = subprocess.call("scons do_triangle=%d debug=%d" % (int(do_triangle), int(debug)), shell=True)
     triangle_c = os.path.join(TRIANGLE_DIR, "triangle.c")
@@ -139,6 +141,7 @@ if __name__ == "__main__":
     logging.basicConfig(level=logging.DEBUG)
     parser = argparse.ArgumentParser(description="Build script for thatsDEM. Wraps SCons")
     parser.add_argument("--debug", action="store_true", help="Do a debug build.")
-    parser.add_argument("--force_triangle", action="store_true", help="Force downloading and building triangle.")
+    parser.add_argument("--force_triangle", action="store_true", help="Force building triangle.")
+    parser.add_argument("--triangle_zip", help="Point to a local triangle.zip - instead of downloading.")
     pargs = parser.parse_args()
-    build(pargs.force_triangle, debug=pargs.debug)
+    build(pargs.force_triangle, pargs.triangle_zip, debug=pargs.debug)

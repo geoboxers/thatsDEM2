@@ -441,7 +441,7 @@ static double spike_filter(double *xy,
                            double frad2,
                            double nd_val,
                            void *params){
-	int i,i1,i2,j,n_steep=0, n_q1=0, n_q2=0, n_q3=0, n_q4=0, n_all_plus=0, n_all_minus=0, n_used=0, could_be_spike=1;
+	int i,i1,i2,j, n_q1=0, n_q2=0, n_q3=0, n_q4=0, n_all_plus=0, n_all_minus=0, n_used=0, could_be_spike=1;
 	double d,dz,dx,dy,mean_dz=0, abs_dz,x=xy[0],y=xy[1],d_lim,slope,tanv2,zlim,*dparams;
 	dparams=(double*) params;
 	d_lim=dparams[0]; /* speed up by saving as param...*/
@@ -603,7 +603,7 @@ static double idw_filter(double *xy, double z, int *indices, double *pc_xy, doub
 }
 
 static double distance_filter(double *xy, double z, int *indices, double *pc_xy, double *pc_z, double frad2, double nd_val, void *opt_params){
-	int i,i1,i2,j,n=0;
+	int i,i1,i2,j;
 	double dmin=HUGE_VAL,d;
 	for(i=0; i<3; i++){
 		i1=indices[2*i];
@@ -627,7 +627,7 @@ static double nearest_filter(double *xy,
                              double frad2,
                              double nd_val, 
                              void *opt_params){
-    int i,i1,i2,j,n=0;
+    int i,i1,i2,j;
 	double dmin=HUGE_VAL,d, idx;
     idx=nd_val;
 	for(i=0; i<3; i++){
