@@ -89,11 +89,14 @@ def patch_triangle(wrkdir):
                     assert local["from"] in lines[line]
                     lines[line] = lines[line].replace(local["from"], local["to"])
         if "insert_after" in patch:
+            # For this to work - insertions MUST be sorted afte line numbers
             LOG.debug("Inserting...")
             lines_out = []
             cl = 0
             for insert in patch["insert_after"]:
                 ln = insert["line"] + 1  # inserting AFTER
+                assert ln > cl
+                LOG.debug("cl: %d, ln: %d" % (cl, ln))
                 lines_out.extend(lines[cl:ln])
                 lines_out.extend(insert["lines"])
                 cl = ln
@@ -126,7 +129,6 @@ def build(force_triangle=False, debug=False):
         patch_triangle(TRIANGLE_DIR)
     LOG.info("Running SCons...")
     rc = subprocess.call("scons do_triangle=%d debug=%d" % (int(do_triangle), int(debug)), shell=True)
-    rc = 0
     triangle_c = os.path.join(TRIANGLE_DIR, "triangle.c")
     if os.path.isfile(triangle_c):
         # Don't accidently include triangle.c in repo...

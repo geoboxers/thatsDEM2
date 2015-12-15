@@ -1,5 +1,10 @@
 {
   "insert_after": [
+    {
+      "line": 314,
+      "lines": ["typedef unsigned long long PTR_AS_UINT;"]
+    },
+    
     { 
       "line": 354,
       "lines": [
@@ -8,10 +13,7 @@
         "#endif"
       ]
     },
-    {
-      "line": 314,
-      "lines": ["typedef unsigned long long PTR_AS_UINT;"]
-    },
+    
     {
       "line": 4884, 
       "lines": [
