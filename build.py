@@ -20,14 +20,13 @@ SCons wrapper building thatsDEM. Yummy!
 
 import os
 import subprocess
-import tempfile
 import urllib2
 import zipfile
 import md5
-import shutil
 import logging
 import argparse
 import glob
+import json
 
 LOG = logging.getLogger("build")
 HERE = os.path.abspath(os.path.dirname(__file__))
@@ -35,18 +34,9 @@ SRC_DIR = os.path.join(HERE, "src")
 # Stuff for triangle
 TRIANGLE_DIR = os.path.join(SRC_DIR, "triangle", "store")
 LIBTRIANGLE = "libtriangle*"
-PATCH_TRIANGLE = os.path.join(SRC_DIR, "triangle","triangle_patch.diff")
-MD5_TRI="Yjh\xfe\x94o)5\xcd\xff\xb1O\x1e$D\xc4"
-URL_TRIANGLE="http://www.netlib.org/voronoi/triangle.zip"
-
-def run(cmd, raise_on_bad_return=True):
-    LOG.info("Running %s" % cmd)
-    prc = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    stdout, stderr = prc.communicate()
-    if prc.returncode != 0 and raise_on_bad_return:
-        LOG.warning(str(stderr))
-        raise Exception("Unusual return code: %d" % prc.returncode)
-    return prc.returncode
+PATCH_TRIANGLE = os.path.join(SRC_DIR, "triangle", "patch.json")
+MD5_TRI = "Yjh\xfe\x94o)5\xcd\xff\xb1O\x1e$D\xc4"
+URL_TRIANGLE = "http://www.netlib.org/voronoi/triangle.zip"
 
 
 def is_newer(p1, p2):
@@ -61,44 +51,65 @@ def is_newer(p1, p2):
     return os.path.getmtime(p1) > os.path.getmtime(p2)
 
 
-def patch_triangle():
-    here = os.getcwd()
+def patch_triangle(wrkdir):
     LOG.info("Starting patching process of triangle...")
-    tmpdir = tempfile.mkdtemp()
-    os.chdir(tmpdir)
     LOG.info("Downloading triangle...")
     patching_exception = None
+    trizip = os.path.join(wrkdir, "triangle.zip")
+    tri_c_out = os.path.join(wrkdir, "triangle.c")
     try:
-        with open("triangle.zip", 'wb') as f:
+        with open(trizip, "wb") as f:
             response = urllib2.urlopen(URL_TRIANGLE)
             assert(response.getcode() == 200)
             f.write(response.read())
         LOG.info("Done...")
-        zf = zipfile.ZipFile("triangle.zip")
-        zf.extract("triangle.c")
-        zf.extract("triangle.h")
-        LOG.info("Checking md5 sum of downloaded file...")
-        with open("triangle.c", "rb") as f:
-            m5 = md5.new(f.read()).digest()
+        zf = zipfile.ZipFile(trizip)
+        zf.extract("triangle.c", wrkdir)
+        zf.extract("triangle.h", wrkdir)
         zf.close()
+        LOG.info("Checking md5 sum of downloaded file...")
+        with open(tri_c_out, "rb") as f:
+            tri_bytes = f.read()
+            m5 = md5.new(tri_bytes).digest()
         assert(m5 == MD5_TRI)
         LOG.info("ok...")
-        run("git init")
-        run("git add triangle.c")
-        run('git -c user.name="NoOne" -c user.email="none@nothing" commit -m dummy')
-        run("git apply " + PATCH_TRIANGLE)
+        # A hassle to fiddle with git apply, hg pacth etc...
+        # This workz!!
+        with open(PATCH_TRIANGLE) as f:
+            patch = json.load(f)
+        if "global" in patch:
+            for fr, to in patch["global"]:
+                LOG.debug("Replacing %s with %s" % (fr, to))
+                tri_bytes = tri_bytes.replace(fr, to)
+        lines = tri_bytes.splitlines()
+        if "local" in patch:
+            LOG.debug("Replacing in lines..")
+            for local in patch["local"]:
+                for line in local["lines"]:
+                    assert local["from"] in lines[line]
+                    lines[line] = lines[line].replace(local["from"], local["to"])
+        if "insert_after" in patch:
+            LOG.debug("Inserting...")
+            lines_out = []
+            cl = 0
+            for insert in patch["insert_after"]:
+                ln = insert["line"] + 1  # inserting AFTER
+                lines_out.extend(lines[cl:ln])
+                lines_out.extend(insert["lines"])
+                cl = ln
+            lines_out.extend(lines[cl:])
+        else:
+            lines_out = lines
+
     except Exception as e:
         LOG.exception("Patching process failed!")
         patching_exception = e
     else:
-        for src in ("triangle.c", "triangle.h"):
-            shutil.copy(src, os.path.join(TRIANGLE_DIR, src))
+        with open(tri_c_out, "wb") as f:
+            f.write("\n".join(lines_out))
     finally:
-        os.chdir(here)
-        try:
-            shutil.rmtree(tmpdir)
-        except Exception as e:
-            print("Failed to delete tmp dir...\n"+str(e))
+        if os.path.isfile(trizip):
+            os.remove(trizip)
         if patching_exception:
             raise patching_exception
 
@@ -112,9 +123,10 @@ def build(force_triangle=False, debug=False):
         do_triangle |= is_newer(PATCH_TRIANGLE, libtriangle)
     do_triangle |= not os.path.isfile(os.path.join(TRIANGLE_DIR, "triangle.h"))
     if do_triangle:
-        patch_triangle()
+        patch_triangle(TRIANGLE_DIR)
     LOG.info("Running SCons...")
     rc = subprocess.call("scons do_triangle=%d debug=%d" % (int(do_triangle), int(debug)), shell=True)
+    rc = 0
     triangle_c = os.path.join(TRIANGLE_DIR, "triangle.c")
     if os.path.isfile(triangle_c):
         # Don't accidently include triangle.c in repo...
@@ -122,7 +134,6 @@ def build(force_triangle=False, debug=False):
     assert rc == 0
 
 if __name__ == "__main__":
-    import argparse
     logging.basicConfig(level=logging.DEBUG)
     parser = argparse.ArgumentParser(description="Build script for thatsDEM. Wraps SCons")
     parser.add_argument("--debug", action="store_true", help="Do a debug build.")

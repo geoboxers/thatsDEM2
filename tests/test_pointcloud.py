@@ -80,6 +80,13 @@ class TestPointcloud(unittest.TestCase):
         self.assertItemsEqual(pc.get_classes(), [2,3])
         self.assertEqual(pc.cut_to_class(2).size, 2)
     
+    def test_lidar_pointcloud_chained_cut(self):
+        LOG.info("Testing lidar pointcloud chained cut")
+        # We want subclasses to return subclasses in cut
+        pc = pointcloud.LidarPointcloud(np.ones((3,2)), np.ones(3), c=[2,2,3], some_attr = np.ones(3))
+        pc2 = pc.cut_to_class(3).cut_to_box(-10, -10, 10, 10).cut_to_class(3)
+        self.assertEqual(pc2.size, 1)
+    
     def test_sort_pointcloud(self):
         LOG.info("Test pointcloud sorting")
         r = np.linspace(0, np.pi*2, 100)

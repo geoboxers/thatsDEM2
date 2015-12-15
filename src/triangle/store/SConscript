@@ -1,7 +1,7 @@
 Import("env", "IS_WIN")
 cloned_env = env.Clone()
 SRC_TRIANGLE = ["triangle.c"]
-TRI_DEFINES=["TRILIBRARY", "NO_TIMER", "GCC_FPU_CONTROL", "POINTERS_ARE_VERY_LONG"]
+TRI_DEFINES=["TRILIBRARY", "NO_TIMER", "GCC_FPU_CONTROL"]
 cloned_env.Append(CPPDEFINES=TRI_DEFINES)
 cloned_env.Append(CCFLAGS=["-fPIC"])
 libtriangle = cloned_env.Library(target=env["libtri"], source=SRC_TRIANGLE)
