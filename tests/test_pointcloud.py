@@ -180,6 +180,16 @@ class TestPointcloud(unittest.TestCase):
         g = pc.get_grid(ncols=2, nrows=2, x1=0, x2=10, y1=0, y2=10, method = "most_frequent", attr="c")
         self.assertTrue( (g.grid == np.array(((0, 5), (0, 6)))).all())
     
+    def test_pointcloud_TIN(self):
+        LOG.info("Test pointcloud gridding, method: triangulation")
+        pc = pointcloud.from_array(np.ones((10,10)), [0, 1, 0, 10, 0, -1])
+        pc.triangulate()
+        c = np.ones(100)*5.0
+        pc.set_attribute("c", c)
+        g = pc.get_grid(ncols=10, nrows=10, x1=0, x2=10, y1=0, y2=10, method = "triangulation", attr="c")
+        self.assertAlmostEqual(np.fabs(g.grid-5.0).max(), 0)
+    
+    
     def _get_named_temp_file(self, ext):
         f = tempfile.NamedTemporaryFile(suffix=ext, delete=False)
         f.close()
