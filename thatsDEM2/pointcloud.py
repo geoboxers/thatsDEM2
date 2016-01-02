@@ -17,8 +17,8 @@
 # silyko, 2014 - 2016
 ############################
 
-import sys
 import os
+import ctypes
 import numpy as np
 from math import ceil
 from osgeo import gdal, ogr
@@ -78,7 +78,8 @@ def from_any(path, **kwargs):
     # TODO - handle keywords properly - all methods, except fromLAS, will only
     # return xyz for now. Fix this...
     b, ext = os.path.splitext(path)
-    # we could use /vsi<whatever> like GDAL to signal special handling - however keep it simple for now.
+    # we could use /vsi<whatever> like GDAL to signal special handling -
+    # however keep it simple for now.
     temp_file = None
     if remote_files.is_remote(path):
         temp_file = remote_files.get_local_file(path)
@@ -106,7 +107,8 @@ def from_any(path, **kwargs):
 # (x1,y1,x2,y2) and / or z_box (z1,z2) and/or list of classes...
 def from_las(path, attrs=("c", "pid")):
     """
-    Load a pointcloud from las / laz format via slash.LasFile. Laz reading currently requires that laszip-cli is findable.
+    Load a pointcloud from las / laz format via slash.LasFile.
+    Laz reading currently requires that laszip-cli is findable.
     Args:
         path: Path to las / laz file.
         attrs: Sequence of attributes to include.
@@ -115,7 +117,8 @@ def from_las(path, attrs=("c", "pid")):
         A pointcloud.Pointcloud object.
     """
     if not set(attrs).issubset(set(LidarPointcloud.LIDAR_ATTRS)):
-        raise ValueError("Only attrs defined in Pointcloud.LIDAR_ATTRS allowed here.")
+        raise ValueError(
+            "Only attrs defined in Pointcloud.LIDAR_ATTRS allowed here.")
     if HAS_LASPY:
         return from_laspy(path, attrs)
     elif HAS_SLASH:
@@ -149,7 +152,7 @@ LASPY_ATTRS = {"c": "raw_classification",
                "rn": "return_num",
                "i": "intensity"
                }
-               
+
 
 def from_laspy(path, attrs=("c", "pid")):
     """
@@ -162,7 +165,7 @@ def from_laspy(path, attrs=("c", "pid")):
     """
     plas = laspy.file.File(path)
     xy = np.column_stack((plas.x, plas.y))
-    plas_attrs = {a: getattr(plas, LASPY_ATTRS.get(a, a)) for a in attrs} 
+    plas_attrs = {a: getattr(plas, LASPY_ATTRS.get(a, a)) for a in attrs}
     pc = LidarPointcloud(xy, plas.z, **plas_attrs)
     plas.close()
     return pc
@@ -193,7 +196,8 @@ def from_npz(path, **kwargs):
     assert "xy" in npzfile.files
     assert "z" in npzfile.files
     attrs = set(npzfile.files).difference({"xy", "z"})
-    pc = Pointcloud(npzfile["xy"], npzfile["z"], **{a: npzfile[a] for a in attrs})
+    pc = Pointcloud(npzfile["xy"], npzfile["z"], **
+                    {a: npzfile[a] for a in attrs})
     return pc
 
 
@@ -332,7 +336,8 @@ def empty_like(pc):
     Returns:
         Pointcloud object.
     """
-    out = type(pc)(np.empty((0, 2), dtype=np.float64), np.empty((0,), dtype=np.float64))
+    out = type(pc)(np.empty((0, 2), dtype=np.float64),
+                   np.empty((0,), dtype=np.float64))
     for a in pc.attributes:
         array = pc.get_array(a)
         out.set_attribute(a, np.empty((0,), dtype=array.dtype))
@@ -356,7 +361,8 @@ class Pointcloud(object):
         z = self._validate_array("z", z, check_size=False)
         if z.shape[0] != xy.shape[0]:
             raise ValueError("z must have length equal to number of xy-points")
-        self.__pc_attrs = {"xy", "z"}  # All pointcloudy arrays, including xy and z
+        # All pointcloudy arrays, including xy and z
+        self.__pc_attrs = {"xy", "z"}
         self.xy = xy
         self.z = z
         # Derived attrs
@@ -395,7 +401,8 @@ class Pointcloud(object):
             array: array like, must have dimension 1 and same size as self.
         """
         if name in ("xy", "z"):
-            raise ValueError("Name of an additional attribute cannot be xy or z")
+            raise ValueError(
+                "Name of an additional attribute cannot be xy or z")
 
         self.set_array(name, value)
 
@@ -405,7 +412,8 @@ class Pointcloud(object):
 
         value = np.asarray(value)
         if name == "xy" or name == "z":
-            value = np.require(value, requirements=['A', 'O', 'C'], dtype=np.float64)
+            value = np.require(value, requirements=[
+                               'A', 'O', 'C'], dtype=np.float64)
         else:
             value = np.require(value, requirements=['A', 'O', 'C'])
         if check_size:
@@ -448,7 +456,8 @@ class Pointcloud(object):
 
     def extend(self, other, least_common=False):
         """
-        Extend the pointcloud 'in place' by adding another pointcloud. Attributtes of current pointcloud must be a subset of attributes of other.
+        Extend the pointcloud 'in place' by adding another pointcloud.
+        Attributtes of current pointcloud must be a subset of attributes of other.
         Args:
             other: A pointcloud.Pointcloud object
             least_common: Whether to restrict to least common set of attributes.
@@ -461,14 +470,16 @@ class Pointcloud(object):
         additional = self.attributes.difference(common)
         if len(additional) > 0:
             if not least_common:
-                raise ValueError("Other pointcloud does not have all attributes of self.")
+                raise ValueError(
+                    "Other pointcloud does not have all attributes of self.")
             # else delete additional
             for a in additional:
                 self.remove_attribute(a)
         self.clear_derived_attrs()
         for a in self.__pc_attrs:
             # Will not invoke __setattr__
-            self._set_array(a, np.concatenate((self.get_array(a), other.get_array(a))))
+            self._set_array(a, np.concatenate(
+                (self.get_array(a), other.get_array(a))))
 
     def thin(self, I):
         """
@@ -498,7 +509,8 @@ class Pointcloud(object):
 
     def sort_spatially(self, cs, shape=None, xy_ul=None, keep_sorting=False):
         """
-        Primitive spatial sorting by creating a 'virtual' 2D grid covering the pointcloud and thus a 1D index by consecutive c style numbering of cells.
+        Primitive spatial sorting by creating a 'virtual' 2D grid covering the pointcloud
+        and thus a 1D index by consecutive c style numbering of cells.
         Keep track of 'slices' of the pointcloud within each 'virtual' cell.
         As the pointcloud is reordered all derived attributes will be cleared.
         Returns:
@@ -508,7 +520,8 @@ class Pointcloud(object):
         if self.get_size() == 0:
             raise Exception("No way to sort an empty pointcloud.")
         if (bool(shape) != bool(xy_ul)):  # either both None or both given
-            raise ValueError("Neither or both of shape and xy_ul should be specified.")
+            raise ValueError(
+                "Neither or both of shape and xy_ul should be specified.")
         self.clear_derived_attrs()
         if shape is None:
             x1, y1, x2, y2 = self.get_bounds()
@@ -528,12 +541,15 @@ class Pointcloud(object):
         self.thin(I)  # This will clear derived attrs
         # fix attr setting order - call thin later...
         self.spatial_index = np.ones((ncols * nrows * 2,), dtype=np.int32) * -1
-        res = array_geometry.lib.fill_spatial_index(B, self.spatial_index, B.shape[0], ncols * nrows)
+        res = array_geometry.lib.fill_spatial_index(
+            B, self.spatial_index, B.shape[0], ncols * nrows)
         if res != 0:
-            raise Exception("Size of spatial index array too small! Programming error!")
+            raise Exception(
+                "Size of spatial index array too small! Programming error!")
         if keep_sorting:
             self.sorting_indices = I
-        self.index_header = np.asarray((ncols, nrows, x1, y2, cs), dtype=np.float64)
+        self.index_header = np.asarray(
+            (ncols, nrows, x1, y2, cs), dtype=np.float64)
         return self
 
     def sort_back(self):
@@ -618,7 +634,8 @@ class Pointcloud(object):
         """
         Cut the pointcloud to a polygon.
         Args:
-            rings: list of rings as numpy arrays. The first entry is the outer ring, while subsequent are holes. Holes in holes not supported.
+            rings: list of rings as numpy arrays.
+                   The first entry is the outer ring, while subsequent are holes. Holes in holes not supported.
         Returns:
             A new Pointcloud object.
         """
@@ -639,7 +656,8 @@ class Pointcloud(object):
 
     def cut_to_box(self, xmin, ymin, xmax, ymax):
         """Cut the pointcloud to a planar bounding box"""
-        I = np.logical_and((self.xy >= (xmin, ymin)), (self.xy <= (xmax, ymax))).all(axis=1)
+        I = np.logical_and((self.xy >= (xmin, ymin)),
+                           (self.xy <= (xmax, ymax))).all(axis=1)
         return self.cut(I)
 
     def get_grid_mask(self, M, georef):
@@ -651,8 +669,10 @@ class Pointcloud(object):
         Returns:
             A numpy 1d boolean mask.
         """
-        ac = ((self.xy - (georef[0], georef[3])) / (georef[1], georef[5])).astype(np.int32)
-        N = np.logical_and(ac >= (0, 0), ac < (M.shape[1], M.shape[0])).all(axis=1)
+        ac = ((self.xy - (georef[0], georef[3])) /
+              (georef[1], georef[5])).astype(np.int32)
+        N = np.logical_and(ac >= (0, 0), ac < (
+            M.shape[1], M.shape[0])).all(axis=1)
         ac = ac[N]
         MM = np.zeros((self.xy.shape[0],), dtype=np.bool)
         MM[N] = M[ac[:, 1], ac[:, 0]]
@@ -722,7 +742,8 @@ class Pointcloud(object):
         """
         tanv2 = np.tan(max_angle * np.pi / 180.0) ** 2  # tanv squared
         geom = self.get_triangle_geometry()
-        self.triangle_validity_mask = (geom < (tanv2, tol_xy, tol_z)).all(axis=1)
+        self.triangle_validity_mask = (
+            geom < (tanv2, tol_xy, tol_z)).all(axis=1)
 
     def get_validity_mask(self):
         # just return the validity mask
@@ -807,7 +828,8 @@ class Pointcloud(object):
             arr_coords = ((self.xy - (geo_ref[0], geo_ref[3])) /
                           (geo_ref[1], geo_ref[5])).astype(np.int32)
             M = np.logical_and(arr_coords[:, 0] >= 0, arr_coords[:, 0] < ncols)
-            M &= np.logical_and(arr_coords[:, 1] >= 0, arr_coords[:, 1] < nrows)
+            M &= np.logical_and(
+                arr_coords[:, 1] >= 0, arr_coords[:, 1] < nrows)
             arr_coords = arr_coords[M]
             # Wow - this gridding is sooo simple! and fast!
             # create flattened index
@@ -817,9 +839,11 @@ class Pointcloud(object):
             h = h.reshape((nrows, ncols))
             return grid.Grid(h, geo_ref, 0)  # zero always nodata value here...
         elif method == "most_frequent":
-            # define method which takes the most frequent value in a cell... could be only mean...
+            # define method which takes the most frequent value in a cell...
+            # could be only mean...
             val = np.require(self.get_array(attr), dtype=np.int32)
-            g = grid.grid_most_frequent_value(self.xy, val, ncols, nrows, geo_ref, nd_val=nd_val)
+            g = grid.grid_most_frequent_value(
+                self.xy, val, ncols, nrows, geo_ref, nd_val=nd_val)
             return g
         elif method in ("density_filter", "idw_filter", "max_filter",
                         "min_filter", "mean_filter", "median_filter", "var_filter"):
@@ -833,7 +857,8 @@ class Pointcloud(object):
             if method == "density_filter":
                 z = filter_func(srad, xy=pts).reshape((nrows, ncols))
             else:
-                z = filter_func(srad, xy=pts, nd_val=nd_val, attr=attr).reshape((nrows, ncols))
+                z = filter_func(srad, xy=pts, nd_val=nd_val,
+                                attr=attr).reshape((nrows, ncols))
             return grid.Grid(z, geo_ref, nd_val)
         elif hasattr(method, "__call__"):
             val = self.get_array(attr)
@@ -888,8 +913,10 @@ class Pointcloud(object):
 
     def get_boundary_vertices(self, M_t, M_p):
         # Experimental and not really used.
-        # Find the vertices which are marked by M_p and inside triangles marked by M_t
-        M_out = array_geometry.get_boundary_vertices(M_t, M_p, self.triangulation.vertices)
+        # Find the vertices which are marked by M_p and inside triangles marked
+        # by M_t
+        M_out = array_geometry.get_boundary_vertices(
+            M_t, M_p, self.triangulation.vertices)
         return M_out
 
     def interpolate(self, xy_in, nd_val=-999, mask=None):
@@ -916,7 +943,8 @@ class Pointcloud(object):
         Args:
             xy_in: The input points (anything that is convertable to a numpy (n,2) float64 array).
             nd_val: No data value for points not in any (valid) triangle.
-            mask: Optional triangle validity mask. Will use internal triangle_validity_mask if  mask not supplied in call.
+            mask: Optional triangle validity mask.
+                  Will use internal triangle_validity_mask if  mask not supplied in call.
         Returns:
             1d numpy array of interpolated values.
         Raises:
@@ -931,7 +959,8 @@ class Pointcloud(object):
     def get_triangle_geometry(self):
         """
         Calculate the triangle geometry as an array with rows: (tanv2_i,bb_xy_i,bb_z_i).
-        Here tanv2 is the squared tangent of the slope angle, bb_xy is the maximal edge of the planar bounding box, and bb_z_i the size of the vertical bounding box.
+        Here tanv2 is the squared tangent of the slope angle,
+        bb_xy is the maximal edge of the planar bounding box, and bb_z_i the size of the vertical bounding box.
         Returns:
             Numpy array of shape (n,3) containing the geometry numbers for each triangle in the triangulation.
         Raises:
@@ -992,7 +1021,8 @@ class Pointcloud(object):
         Args:
             geoid: A geoid grid - grid.Grid instance.
         """
-        # warp to orthometric heights. z bounds not stored, so no need to recalculate.
+        # warp to orthometric heights. z bounds not stored, so no need to
+        # recalculate.
         toE = geoid.interpolate(self.xy)
         assert((toE != geoid.nd_val).all())
         self.z -= toE
@@ -1008,7 +1038,8 @@ class Pointcloud(object):
         converter_list = []
         for a in self.attributes:
             try:
-                t = layer_defn.GetFieldDefn(layer_defn.GetFieldIndex(a)).GetType()
+                t = layer_defn.GetFieldDefn(
+                    layer_defn.GetFieldIndex(a)).GetType()
                 assert t == npytype2ogrtype(self.get_array(a).dtype)
             except Exception as e:
                 raise TypeError("Layer does not seem to have a proper field corresponding to '%s'" % a +
@@ -1017,7 +1048,8 @@ class Pointcloud(object):
         for row in self:
             feature = ogr.Feature(layer_defn)
             geom = ogr.Geometry(geom_type)
-            geom.SetPoint(0, float(row["xy"][0]), float(row["xy"][1]), float(row["z"]))
+            geom.SetPoint(0, float(row["xy"][0]), float(
+                row["xy"][1]), float(row["z"]))
             for field_name, converter in converter_list:
                 val = converter(row[field_name])
                 feature.SetField(field_name, val)
@@ -1028,7 +1060,8 @@ class Pointcloud(object):
     def dump_new_ogr_layer(self, ds, layername="pointcloud", srs=None):
         geom_type = ogr.wkbPoint25D
         layer = ds.CreateLayer(layername, srs, geom_type)
-        field_list = [(a, npytype2ogrtype(self.get_array(a).dtype)) for a in self.attributes]
+        field_list = [(a, npytype2ogrtype(self.get_array(a).dtype))
+                      for a in self.attributes]
         for field_name, field_type in field_list:
             field_defn = ogr.FieldDefn(field_name, field_type)
             ok = layer.CreateField(field_defn)
@@ -1061,19 +1094,59 @@ class Pointcloud(object):
         If compressed is True, store in compressed format using savez_compressed
         """
         if compressed:
-            np.savez_compressed(path, **{a: self.get_array(a) for a in self.__pc_attrs})
+            np.savez_compressed(path, **{a: self.get_array(a)
+                                         for a in self.__pc_attrs})
         else:
             np.savez(path, **{a: self.get_array(a) for a in self.__pc_attrs})
 
     # Filterering methods below...
 
     def validate_filter_args(self, rad):
-        # internal utility - just validate a filter radius against the internal spatial index.
+        # internal utility - just validate a filter radius against the internal
+        # spatial index.
         if self.spatial_index is None:
             raise Exception("Build a spatial index first!")
         if rad > self.index_header[4]:
-            raise Warning("Filter radius larger than cell size of spatial index will not catch all points!")
+            raise Warning(
+                "Filter radius larger than cell size of spatial index will not catch all points!")
 
+    def custom_filter(self, filter_rad, filter_func, xy=None, z=None,
+                          nd_val=-9999, attr="z", params=None):
+        self.validate_filter_args(filter_rad)
+        if xy is None or z is None:
+            assert xy is None and z is None
+            xy = self.xy
+            z = self.z
+        vals = np.require(self.get_array(attr), dtype=np.float64)
+        out = array_geometry.apply_custom_filter(xy, z, self.xy, vals,
+                                                 self.spatial_index, self.index_header,
+                                                 filter_func, filter_rad, nd_val, params)
+        return out
+                         
+    def builtin_2d_filter(self, filter_rad, filter_name, xy=None,
+                          nd_val=-9999, attr="z", params=None):
+        self.validate_filter_args(filter_rad)
+        if xy is None:
+            xy = self.xy
+        vals = np.require(self.get_array(attr), dtype=np.float64)
+        out = array_geometry.apply_library_filter(xy, None, self.xy, vals,
+                                                  self.spatial_index, self.index_header,
+                                                  filter_name, filter_rad, nd_val, params)
+        return out
+
+    def builtin_3d_filter(self, filter_rad, filter_name, xy=None, z=None,
+                          nd_val=-9999, attr="z", params=None):
+        self.validate_filter_args(filter_rad)
+        if xy is None or z is None:
+            assert xy is None and z is None
+            xy = self.xy
+            z = self.z
+        vals = np.require(self.get_array(attr), dtype=np.float64)
+        out = array_geometry.apply_library_filter(xy, z, self.xy, vals,
+                                                  self.spatial_index, self.index_header,
+                                                  filter_name, filter_rad, nd_val, params)
+        return out
+    
     # '2.5D' filters
     def min_filter(self, filter_rad, xy=None, nd_val=-9999, attr="z"):
         """
@@ -1084,23 +1157,7 @@ class Pointcloud(object):
         Returns:
             1D array of filtered values.
         """
-        self.validate_filter_args(filter_rad)
-        if xy is None:
-            xy = self.xy
-        vals = np.require(self.get_array(attr), dtype=np.float64)
-        z_out = np.zeros((xy.shape[0],), dtype=np.float64)
-
-        array_geometry.lib.pc_min_filter(
-            xy,
-            self.xy,
-            vals,
-            z_out,
-            filter_rad,
-            nd_val,
-            self.spatial_index,
-            self.index_header,
-            xy.shape[0])
-        return z_out
+        return self.builtin_2d_filter(filter_rad, "min_filter", xy, nd_val, attr)
 
     def mean_filter(self, filter_rad, xy=None, nd_val=-9999, attr="z"):
         """
@@ -1111,22 +1168,7 @@ class Pointcloud(object):
         Returns:
             1D array of filtered values.
         """
-        self.validate_filter_args(filter_rad)
-        if xy is None:
-            xy = self.xy
-        vals = np.require(self.get_array(attr), dtype=np.float64)
-        z_out = np.zeros((xy.shape[0],), dtype=np.float64)
-        array_geometry.lib.pc_mean_filter(
-            xy,
-            self.xy,
-            vals,
-            z_out,
-            filter_rad,
-            nd_val,
-            self.spatial_index,
-            self.index_header,
-            xy.shape[0])
-        return z_out
+        return self.builtin_2d_filter(filter_rad, "mean_filter", xy, nd_val, attr)
 
     def max_filter(self, filter_rad, xy=None, nd_val=-9999, attr="z"):
         """
@@ -1137,14 +1179,8 @@ class Pointcloud(object):
         Returns:
             1D array of filtered values.
         """
-        self.validate_filter_args(filter_rad)
-        if xy is None:
-            xy = self.xy
-        vals = np.require(self.get_array(attr), dtype=np.float64)
-        z_out = np.zeros((xy.shape[0],), dtype=np.float64)
-        array_geometry.lib.pc_min_filter(
-            xy, self.xy, -vals, z_out, filter_rad, nd_val, self.spatial_index, self.index_header, xy.shape[0])
-        return -z_out
+
+        return self.builtin_2d_filter(filter_rad, "max_filter", xy, nd_val, attr)
 
     def median_filter(self, filter_rad, xy=None, nd_val=-9999, attr="z"):
         """
@@ -1155,22 +1191,7 @@ class Pointcloud(object):
         Returns:
             1D array of filtered values.
         """
-        self.validate_filter_args(filter_rad)
-        if xy is None:
-            xy = self.xy
-        vals = np.require(self.get_array(attr), dtype=np.float64)
-        z_out = np.zeros((xy.shape[0],), dtype=np.float64)
-        array_geometry.lib.pc_median_filter(
-            xy,
-            self.xy,
-            vals,
-            z_out,
-            filter_rad,
-            nd_val,
-            self.spatial_index,
-            self.index_header,
-            xy.shape[0])
-        return z_out
+        return self.builtin_2d_filter(filter_rad, "median_filter", xy, nd_val, attr)
 
     def var_filter(self, filter_rad, xy=None, nd_val=-9999, attr="z"):
         """
@@ -1181,72 +1202,31 @@ class Pointcloud(object):
         Returns:
             1D array of filtered values.
         """
-        self.validate_filter_args(filter_rad)
-        if xy is None:
-            xy = self.xy
-        vals = np.require(self.get_array(attr), dtype=np.float64)
-        z_out = np.zeros((xy.shape[0],), dtype=np.float64)
-        array_geometry.lib.pc_var_filter(
-            xy,
-            self.xy,
-            vals,
-            z_out,
-            filter_rad,
-            nd_val,
-            self.spatial_index,
-            self.index_header,
-            xy.shape[0])
-        return z_out
+        return self.builtin_2d_filter(filter_rad, "var_filter", xy, nd_val, attr)
 
     def idw_filter(self, filter_rad, xy=None, nd_val=-9999, attr="z"):
         """
-        Calculate inverse distance weighted z values along self.xy or a supplied set of input points. Useful for gridding.
+        Calculate inverse distance weighted z values along self.xy or a supplied set of input points.
+        Useful for gridding.
         Args:
             filter_rad: The radius of the filter. Should not be larger than cell size in spatial index (for now).
             xy: Optional list of input points to filter along. Will use self.xy if not supplied.
         Returns:
             1D array of filtered values.
         """
-        self.validate_filter_args(filter_rad)
-        if xy is None:
-            xy = self.xy
-        vals = np.require(self.get_array(attr), dtype=np.float64)
-        z_out = np.zeros((xy.shape[0],), dtype=np.float64)
-        array_geometry.lib.pc_idw_filter(
-            xy,
-            self.xy,
-            vals,
-            z_out,
-            filter_rad,
-            nd_val,
-            self.spatial_index,
-            self.index_header,
-            xy.shape[0])
-        return z_out
+        return self.builtin_2d_filter(filter_rad, "mean_filter", xy, nd_val, attr)
 
     # 'Geometric' filters
     def distance_filter(self, filter_rad, xy, nd_val=9999):
         """
-        Calculate point distance filter along self.xy or a supplied set of input points (which should really be supplied for this to make sense). Useful for gridding.
+        Calculate point distance filter along a supplied set of input points. Useful for gridding.
         Args:
             filter_rad: The radius of the filter. Should not be larger than cell size in spatial index (for now).
             xy: Optional list of input points to filter along. Supply this or get a lot of zeros!
         Returns:
             1D array of filtered values.
         """
-        self.validate_filter_args(filter_rad)
-        z_out = np.zeros((xy.shape[0],), dtype=np.float64)
-        array_geometry.lib.pc_distance_filter(
-            xy,
-            self.xy,
-            self.z,
-            z_out,
-            filter_rad,
-            nd_val,
-            self.spatial_index,
-            self.index_header,
-            xy.shape[0])
-        return z_out
+        return self.builtin_2d_filter(filter_rad, "distance_filter", xy, nd_val)
 
     def nearest_filter(self, filter_rad, xy, nd_val=-1):
         """
@@ -1257,19 +1237,7 @@ class Pointcloud(object):
         Returns:
             1D array of filtered values.
         """
-        self.validate_filter_args(filter_rad)
-        idx_out = np.zeros((xy.shape[0],), dtype=np.float64)
-        array_geometry.lib.pc_nearest_filter(
-            xy,
-            self.xy,
-            self.z,
-            idx_out,
-            filter_rad,
-            nd_val,
-            self.spatial_index,
-            self.index_header,
-            xy.shape[0])
-        return idx_out.astype(np.int32)
+        return self.builtin_2d_filter(filter_rad, "nearest_filter", xy, nd_val).astype(np.int32)
 
     def density_filter(self, filter_rad, xy=None):
         """
@@ -1280,20 +1248,7 @@ class Pointcloud(object):
         Returns:
             1D array of filtered values.
         """
-        self.validate_filter_args(filter_rad)
-        if xy is None:
-            xy = self.xy
-        z_out = np.zeros((xy.shape[0],), dtype=np.float64)
-        array_geometry.lib.pc_density_filter(
-            xy,
-            self.xy,
-            self.z,
-            z_out,
-            filter_rad,
-            self.spatial_index,
-            self.index_header,
-            xy.shape[0])
-        return z_out
+        return self.builtin_2d_filter(filter_rad, "density_filter", xy, 0)
 
     # 3D filters
     def ballcount_filter(self, filter_rad, xy=None, z=None, nd_val=0):
@@ -1306,24 +1261,7 @@ class Pointcloud(object):
         Returns:
             1D array of counts.
         """
-        self.validate_filter_args(filter_rad)
-        if xy is None or z is None:
-            assert xy is None and z is None
-            xy = self.xy
-            z = self.z
-        n_out = np.zeros((xy.shape[0],), dtype=np.float64)
-        array_geometry.lib.pc_ballcount_filter(
-            xy,
-            z,
-            self.xy,
-            self.z,
-            n_out,
-            filter_rad,
-            nd_val,
-            self.spatial_index,
-            self.index_header,
-            xy.shape[0])
-        return n_out
+        return self.builtin_3d_filter(filter_rad, "ballcount_filter", xy, z, 0)
 
     def ray_mean_dist_filter(self, filter_rad, xy=None, z=None):
         """
@@ -1336,27 +1274,13 @@ class Pointcloud(object):
         Returns:
             1D array of spike indications (0 or 1).
         """
-        self.validate_filter_args(filter_rad)
-        if xy is None or z is None:
-            assert xy is None and z is None
-            xy = self.xy
-            z = self.z
-        c_out = np.zeros((xy.shape[0],), dtype=np.float64)
-        array_geometry.lib.pc_ray_mean_dist_filter(
-            xy,
-            z,
-            self.xy,
-            self.z,
-            c_out,
-            filter_rad,
-            self.spatial_index,
-            self.index_header,
-            xy.shape[0])
-        return c_out
+        return self.builtin_3d_filter(filter_rad, "ray_mean_dist_filter", xy, z, 0)
 
     def spike_filter(self, filter_rad, tanv2, zlim=0.2):
         """
-        Calculate spike indicators (0 or 1) for each point . In order to be a spike there must be at least one other point within filter rad in each quadrant which satisfies:
+        Calculate spike indicators (0 or 1) for each point .
+        In order to be a spike there must be at least one other point within filter rad in each quadrant
+        which satisfies:
         -- slope_angle large and dz large.
         See c implementation in array_geometry.c.
         Args:
@@ -1366,23 +1290,16 @@ class Pointcloud(object):
         Returns:
             1D array of spike indications (0 or 1).
         """
-        self.validate_filter_args(filter_rad)
         if (tanv2 < 0 or zlim < 0):
             raise ValueError("Spike parameters must be positive!")
-        z_out = np.empty_like(self.z)
-        array_geometry.lib.pc_spike_filter(
-            self.xy,
-            self.z,
-            self.xy,
-            self.z,
-            z_out,
-            filter_rad,
-            tanv2,
-            zlim,
-            self.spatial_index,
-            self.index_header,
-            self.xy.shape[0])
-        return z_out
+        # was:
+        # params[0]=SQUARE(filter_rad*0.2);
+            # params[1]=tanv2;
+            # params[2]=zlim;
+        arr_type = ctypes.c_double * 3
+        params = arr_type((filter_rad * 0.2) ** 2, tanv2, zlim)
+        p_params = ctypes.cast(params, ctypes.c_void_p)
+        return self.builtin_3d_filter(filter_rad, "spike_filter", params=p_params)
 
 
 class LidarPointcloud(Pointcloud):

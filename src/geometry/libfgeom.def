@@ -4,17 +4,18 @@ EXPORTS
     get_triangle_geometry
     mark_bd_vertices
     fill_spatial_index
-    pc_min_filter
-    pc_mean_filter
-    pc_median_filter
-    pc_spike_filter
-    pc_idw_filter
-    pc_var_filter
-    pc_density_filter
-    pc_distance_filter
-    pc_ballcount_filter
-    pc_ray_mean_dist_filter
-    pc_nearest_filter
+    min_filter
+    max_filter
+    mean_filter
+    median_filter
+    spike_filter
+    idw_filter
+    var_filter
+    density_filter
+    distance_filter
+    ballcount_filter
+    ray_mean_dist_filter
+    nearest_filter
     get_normals
     tri_filter_low
     moving_bins

@@ -188,7 +188,27 @@ class TestPointcloud(unittest.TestCase):
         pc.set_attribute("c", c)
         g = pc.get_grid(ncols=10, nrows=10, x1=0, x2=10, y1=0, y2=10, method = "triangulation", attr="c")
         self.assertAlmostEqual(np.fabs(g.grid-5.0).max(), 0)
-    
+
+    @staticmethod
+    def custom_filter(xy, z, slices, pc_xy, pc_z, frad2, nd_val, opt_params):
+        m = 0.0
+        n = 0
+        for i in range(3):
+            j1 = slices[i*3]
+            j2 = slices[i*3+1]
+            for j in range(j1, j2):
+                m += pc_z[j]
+                n += 1
+        return m/n
+
+    def test_custom_filter(self):
+        LOG.info("Test pointcloud custom filter")
+        pc = pointcloud.from_array(np.ones((10,10)), [0, 1, 0, 10, 0, -1])
+        c = np.ones(100)*5.0
+        pc.set_attribute("c", c)
+        pc.sort_spatially(2)
+        z = pc.custom_filter(2, self.custom_filter, attr="c")
+        self.assertTrue((z == 5).all())
     
     def _get_named_temp_file(self, ext):
         f = tempfile.NamedTemporaryFile(suffix=ext, delete=False)

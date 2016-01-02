@@ -1,5 +1,5 @@
-# Copyright (c) 2015, Danish Geodata Agency <gst@gst.dk>
-#
+# Original work Copyright (c) 2015, Danish Geodata Agency <gst@gst.dk>
+# Modified work Copyright (c) 2015-2016, Geoboxers <info@geoboxers.com>
 # Permission to use, copy, modify, and/or distribute this software for any
 # purpose with or without fee is hereby granted, provided that the above
 # copyright notice and this permission notice appear in all copies.
@@ -12,7 +12,6 @@
 # ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
 # OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 #
-import sys
 import os
 import ctypes
 import numpy as np
@@ -20,16 +19,26 @@ from osgeo import ogr
 LIBDIR = os.path.realpath(os.path.join(os.path.dirname(__file__), "..", "lib"))
 LIBNAME = "libfgeom"
 XY_TYPE = np.ctypeslib.ndpointer(dtype=np.float64, flags=['C', 'O', 'A', 'W'])
-GRID_TYPE = np.ctypeslib.ndpointer(dtype=np.float64, ndim=2, flags=['C', 'O', 'A', 'W'])
-GRID32_TYPE = np.ctypeslib.ndpointer(dtype=np.float32, ndim=2, flags=['C', 'O', 'A', 'W'])
-Z_TYPE = np.ctypeslib.ndpointer(dtype=np.float64, ndim=1, flags=['C', 'O', 'A', 'W'])
-MASK_TYPE = np.ctypeslib.ndpointer(dtype=np.bool, ndim=1, flags=['C', 'O', 'A', 'W'])
-MASK2D_TYPE = np.ctypeslib.ndpointer(dtype=np.bool, ndim=2, flags=['C', 'O', 'A', 'W'])
-UINT32_TYPE = np.ctypeslib.ndpointer(dtype=np.uint32, ndim=1, flags=['C', 'O', 'A'])
-HMAP_TYPE = np.ctypeslib.ndpointer(dtype=np.uint32, ndim=2, flags=['C', 'O', 'A'])
-UINT8_VOXELS = np.ctypeslib.ndpointer(dtype=np.uint8, ndim=3, flags=['C', 'O', 'A', 'W'])
-INT32_VOXELS = np.ctypeslib.ndpointer(dtype=np.int32, ndim=3, flags=['C', 'O', 'A', 'W'])
-INT32_TYPE = np.ctypeslib.ndpointer(dtype=np.int32, ndim=1, flags=['C', 'O', 'A', 'W'])
+GRID_TYPE = np.ctypeslib.ndpointer(
+    dtype=np.float64, ndim=2, flags=['C', 'O', 'A', 'W'])
+GRID32_TYPE = np.ctypeslib.ndpointer(
+    dtype=np.float32, ndim=2, flags=['C', 'O', 'A', 'W'])
+Z_TYPE = np.ctypeslib.ndpointer(
+    dtype=np.float64, ndim=1, flags=['C', 'O', 'A', 'W'])
+MASK_TYPE = np.ctypeslib.ndpointer(
+    dtype=np.bool, ndim=1, flags=['C', 'O', 'A', 'W'])
+MASK2D_TYPE = np.ctypeslib.ndpointer(
+    dtype=np.bool, ndim=2, flags=['C', 'O', 'A', 'W'])
+UINT32_TYPE = np.ctypeslib.ndpointer(
+    dtype=np.uint32, ndim=1, flags=['C', 'O', 'A'])
+HMAP_TYPE = np.ctypeslib.ndpointer(
+    dtype=np.uint32, ndim=2, flags=['C', 'O', 'A'])
+UINT8_VOXELS = np.ctypeslib.ndpointer(
+    dtype=np.uint8, ndim=3, flags=['C', 'O', 'A', 'W'])
+INT32_VOXELS = np.ctypeslib.ndpointer(
+    dtype=np.int32, ndim=3, flags=['C', 'O', 'A', 'W'])
+INT32_TYPE = np.ctypeslib.ndpointer(
+    dtype=np.int32, ndim=1, flags=['C', 'O', 'A', 'W'])
 LP_CINT = ctypes.POINTER(ctypes.c_int)
 LP_CCHAR = ctypes.POINTER(ctypes.c_char)
 lib = np.ctypeslib.load_library(LIBNAME, LIBDIR)
@@ -37,10 +46,13 @@ lib = np.ctypeslib.load_library(LIBNAME, LIBDIR)
 # corresponds to
 # array_geometry.h
 ##############
-# void p_in_buf(double *p_in, char *mout, double *verts, unsigned long np, unsigned long nv, double d)
-lib.p_in_buf.argtypes = [XY_TYPE, MASK_TYPE, XY_TYPE, ctypes.c_ulong, ctypes.c_ulong, ctypes.c_double]
+# void p_in_buf(double *p_in, char *mout, double *verts, unsigned long np,
+# unsigned long nv, double d)
+lib.p_in_buf.argtypes = [XY_TYPE, MASK_TYPE, XY_TYPE,
+                         ctypes.c_ulong, ctypes.c_ulong, ctypes.c_double]
 lib.p_in_buf.restype = None
-lib.p_in_poly.argtypes = [XY_TYPE, MASK_TYPE, XY_TYPE, ctypes.c_uint, UINT32_TYPE, ctypes.c_uint]
+lib.p_in_poly.argtypes = [XY_TYPE, MASK_TYPE,
+                          XY_TYPE, ctypes.c_uint, UINT32_TYPE, ctypes.c_uint]
 lib.p_in_poly.restype = ctypes.c_int
 lib.get_triangle_geometry.argtypes = [
     XY_TYPE, Z_TYPE, LP_CINT, np.ctypeslib.ndpointer(
@@ -51,105 +63,153 @@ lib.get_normals.argtypes = [
     XY_TYPE, Z_TYPE, LP_CINT, np.ctypeslib.ndpointer(
         dtype=np.float64, ndim=2, flags=[
             'C', 'O', 'A', 'W']), ctypes.c_int]
-lib.get_normals.restype=None
-lib.mark_bd_vertices.argtypes = [MASK_TYPE, MASK_TYPE, LP_CINT, MASK_TYPE, ctypes.c_int, ctypes.c_int]
+lib.get_normals.restype = None
+lib.mark_bd_vertices.argtypes = [
+    MASK_TYPE, MASK_TYPE, LP_CINT, MASK_TYPE, ctypes.c_int, ctypes.c_int]
 lib.mark_bd_vertices.restype = None
-# int fill_spatial_index(int *sorted_flat_indices, int *index, int npoints, int max_index)
-lib.fill_spatial_index.argtypes = [INT32_TYPE, INT32_TYPE, ctypes.c_int, ctypes.c_int]
+# int fill_spatial_index(int *sorted_flat_indices, int *index, int
+# npoints, int max_index)
+lib.fill_spatial_index.argtypes = [
+    INT32_TYPE, INT32_TYPE, ctypes.c_int, ctypes.c_int]
 lib.fill_spatial_index.restype = ctypes.c_int
-STD_FILTER_ARGS = (
+LP_C_DOUBLE = ctypes.POINTER(ctypes.c_double)
+LP_C_INT = ctypes.POINTER(ctypes.c_int)
+FILTER_FUNC_TYPE = ctypes.CFUNCTYPE(ctypes.c_double,
+                                    LP_C_DOUBLE,
+                                    ctypes.c_double,
+                                    LP_C_INT,
+                                    LP_C_DOUBLE,
+                                    LP_C_DOUBLE,
+                                    ctypes.c_double,
+                                    ctypes.c_double,
+                                    ctypes.c_void_p)
+
+lib.apply_filter.argtypes = (
     XY_TYPE,
+    LP_C_DOUBLE,
     XY_TYPE,
     Z_TYPE,
     Z_TYPE,
-    ctypes.c_double,
-    ctypes.c_double,
     INT32_TYPE,
     XY_TYPE,
-    ctypes.c_int)
-STD_FILTER_ARGS_3D = (
-    XY_TYPE,
-    Z_TYPE,
-    XY_TYPE,
-    Z_TYPE,
-    Z_TYPE,
+    ctypes.c_int,
+    FILTER_FUNC_TYPE,
     ctypes.c_double,
     ctypes.c_double,
-    INT32_TYPE,
-    XY_TYPE,
-    ctypes.c_int)
-lib.pc_min_filter.argtypes = STD_FILTER_ARGS
-lib.pc_min_filter.restype = None
-lib.pc_mean_filter.argtypes = STD_FILTER_ARGS
-lib.pc_mean_filter.restype = None
-lib.pc_idw_filter.argtypes = STD_FILTER_ARGS
-lib.pc_idw_filter.restype = None
-lib.pc_median_filter.argtypes = STD_FILTER_ARGS
-lib.pc_median_filter.restype = None
-lib.pc_var_filter.argtypes = STD_FILTER_ARGS
-lib.pc_var_filter.restype = None
-lib.pc_distance_filter.argtypes = STD_FILTER_ARGS
-lib.pc_distance_filter.restype = None
-lib.pc_nearest_filter.argtypes = STD_FILTER_ARGS
-lib.pc_nearest_filter.restype = None
-lib.pc_ballcount_filter.argtypes = STD_FILTER_ARGS_3D
-lib.pc_ballcount_filter.restype = None
-lib.pc_density_filter.argtypes = [
-    XY_TYPE,
-    XY_TYPE,
-    Z_TYPE,
-    Z_TYPE,
-    ctypes.c_double,
-    INT32_TYPE,
-    XY_TYPE,
-    ctypes.c_int]
-lib.pc_density_filter.restype = None
-lib.pc_spike_filter.argtypes = [
-    XY_TYPE,
-    Z_TYPE,
-    XY_TYPE,
-    Z_TYPE,
-    Z_TYPE,
-    ctypes.c_double,
-    ctypes.c_double,
-    ctypes.c_double,
-    INT32_TYPE,
-    XY_TYPE,
-    ctypes.c_int]
-lib.pc_spike_filter.restype = None
-lib.pc_ray_mean_dist_filter.argtypes = [
-    XY_TYPE,
-    Z_TYPE,
-    XY_TYPE,
-    Z_TYPE,
-    Z_TYPE,
-    ctypes.c_double,
-    INT32_TYPE,
-    XY_TYPE,
-    ctypes.c_int]
-lib.pc_ray_mean_dist_filter.restype = None
-# void pc_noise_filter(double *pc_xy, double *pc_z, double *z_out, double filter_rad, double zlim, double den_cut, int *spatial_index, double *header, int npoints);
+    ctypes.c_void_p
+)
+
+lib.apply_filter.restype = None
+
+# void pc_noise_filter(double *pc_xy, double *pc_z, double *z_out, double filter_rad,
+#                      double zlim, double den_cut, int *spatial_index, double *header, int npoints);
 # binning
 # void moving_bins(double *z, int *nout, double rad, int n);
 lib.moving_bins.argtypes = [Z_TYPE, INT32_TYPE, ctypes.c_double, ctypes.c_int]
 lib.moving_bins.restype = None
 # a triangle based filter
-# void tri_filter_low(double *z, double *zout, int *tri, double cut_off, int ntri)
-lib.tri_filter_low.argtypes = [Z_TYPE, Z_TYPE, LP_CINT, ctypes.c_double, ctypes.c_int]
+# void tri_filter_low(double *z, double *zout, int *tri, double cut_off,
+# int ntri)
+lib.tri_filter_low.argtypes = [Z_TYPE, Z_TYPE,
+                               LP_CINT, ctypes.c_double, ctypes.c_int]
 lib.tri_filter_low.restype = None
 # hmap filler
-# void fill_it_up(unsigned char *out, unsigned int *hmap, int rows, int cols, int stacks);
+# void fill_it_up(unsigned char *out, unsigned int *hmap, int rows, int
+# cols, int stacks);
 lib.fill_it_up.argtypes = [UINT8_VOXELS, HMAP_TYPE] + [ctypes.c_int] * 3
 lib.fill_it_up.restype = None
-lib.find_floating_voxels.argtypes = [INT32_VOXELS, INT32_VOXELS] + [ctypes.c_int] * 4
+lib.find_floating_voxels.argtypes = [
+    INT32_VOXELS, INT32_VOXELS] + [ctypes.c_int] * 4
 lib.find_floating_voxels.restype = None
-# int flood_cells(float *dem, float cut_off, char *mask, char *mask_out, int nrows, int ncols)
-lib.flood_cells.argtypes = [GRID32_TYPE, ctypes.c_float, MASK2D_TYPE, MASK2D_TYPE] + [ctypes.c_int] * 2
+# int flood_cells(float *dem, float cut_off, char *mask, char *mask_out,
+# int nrows, int ncols)
+lib.flood_cells.argtypes = [GRID32_TYPE, ctypes.c_float,
+                            MASK2D_TYPE, MASK2D_TYPE] + [ctypes.c_int] * 2
 lib.flood_cells.restype = ctypes.c_int
-# void masked_mean_filter(float *dem, float *out, char *mask, int filter_rad, int nrows, int ncols)
-lib.masked_mean_filter.argtypes = [GRID32_TYPE, GRID32_TYPE, MASK2D_TYPE] + [ctypes.c_int] * 3
-lib.binary_fill_gaps.argtypes = [MASK2D_TYPE, MASK2D_TYPE, ctypes.c_int, ctypes.c_int]
+# void masked_mean_filter(float *dem, float *out, char *mask, int
+# filter_rad, int nrows, int ncols)
+lib.masked_mean_filter.argtypes = [
+    GRID32_TYPE, GRID32_TYPE, MASK2D_TYPE] + [ctypes.c_int] * 3
+lib.binary_fill_gaps.argtypes = [MASK2D_TYPE,
+                                 MASK2D_TYPE, ctypes.c_int, ctypes.c_int]
 lib.binary_fill_gaps.restype = None
+
+
+def apply_library_filter(along_xy, along_z,
+                         pc_xy, pc_attr,
+                         spatial_index,
+                         index_header,
+                         filter_name,
+                         filter_rad,
+                         nd_val,
+                         params=None):
+    """
+    Apply a bultin library filter
+    Args:
+        along_xy: Numpy array of input points.
+        along_z: Numpy array of z values if 3d-filter, else None.
+        pc_xy: The points to apply the filter on.
+        pc_attr: The values to apply the filter on (z if a geometric filter).
+        spatial_index: Pointcloud spatial index (see Pointcloud.sort_spatially)
+        index_header: Pointcloud index metadata header.
+        filter_name: A name of one of the builtin filters.
+        filter_rad: Filter radius (which the filter function will use as needed).
+        nd_val: No data value.
+        params: Optional addtional parameters. MUST be a ctypes.c_void_p pointer if not None.
+    Returns:
+        1d array of filtered values
+    """
+    out = np.zeros_like(pc_attr)
+    addr = ctypes.cast(getattr(lib, filter_name), ctypes.c_void_p).value
+    func = FILTER_FUNC_TYPE(addr)
+    if along_z is not None:
+        # If using a 3d filter - construct pointer
+        assert along_z.shape[0] == along_xy.shape[0]
+        pz = along_z.ctypes.data_as(LP_C_DOUBLE)
+    else:
+        pz = None
+    lib.apply_filter(along_xy, pz, pc_xy, pc_attr, out, spatial_index,
+                     index_header, along_xy.shape[0], func, filter_rad,
+                     nd_val, params)
+    return out
+
+
+def apply_custom_filter(along_xy, along_z,
+                        pc_xy, pc_attr,
+                        spatial_index,
+                        index_header,
+                        filter_func,
+                        filter_rad,
+                        nd_val,
+                        params=None):
+    """
+    Apply a custom python of type FILTER_FUNC.
+    Args:
+        along_xy: Numpy array of input points.
+        along_z: Numpy array of z values if 3d-filter, else None.
+        pc_xy: The points to apply the filter on.
+        pc_attr: The values to apply the filter on (z if a geometric filter).
+        spatial_index: Pointcloud spatial index (see Pointcloud.sort_spatially)
+        index_header: Pointcloud index metadata header.
+        filter_func: Python function, castable to FILTER_FUNC.
+        filter_rad: Filter radius (which the filter function will use as needed).
+        nd_val: No data value.
+        params: Optional addtional parameters. MUST be a ctypes.c_void_p pointer if not None.
+    Returns:
+        1d array of filtered values
+    """
+    out = np.zeros_like(pc_attr)
+    func = FILTER_FUNC_TYPE(filter_func)
+    if along_z is not None:
+        # If using a 3d filter - construct pointer
+        assert along_z.shape[0] == along_xy.shape[0]
+        pz = along_z.ctypes.data_as(LP_C_DOUBLE)
+    else:
+        pz = None
+    lib.apply_filter(along_xy, pz, pc_xy, pc_attr, out, spatial_index,
+                     index_header, along_xy.shape[0], func, filter_rad,
+                     nd_val, params)
+    return out
 
 
 def binary_fill_gaps(M):
@@ -196,7 +256,8 @@ def flood_cells(dem, cut_off, water_mask):
     # experimental 'downhill' expansion of water cells
     assert(water_mask.shape == dem.shape)
     out = np.copy(water_mask)
-    n = lib.flood_cells(dem, cut_off, water_mask, out, dem.shape[0], dem.shape[1])
+    n = lib.flood_cells(dem, cut_off, water_mask, out,
+                        dem.shape[0], dem.shape[1])
     return out, n
 
 
@@ -239,7 +300,8 @@ def ogrgeom2array(ogr_geom, flatten=True):
     elif t == ogr.wkbMultiPoint or t == ogr.wkbMultiPoint25D:
         return ogrmultipoint2array(ogr_geom, flatten)
     else:
-        raise Exception("Unsupported geometry type: %s" % ogr_geom.GetGeometryName())
+        raise Exception("Unsupported geometry type: %s" %
+                        ogr_geom.GetGeometryName())
 
 
 def ogrpoly2array(ogr_poly, flatten=True):
@@ -266,7 +328,8 @@ def ogrline2array(ogr_line, flatten=True):
     t = ogr_line.GetGeometryType()
     assert(t == ogr.wkbLineString or t == ogr.wkbLineString25D)
     pts = ogr_line.GetPoints()
-    # for an incompatible geometry ogr returns None... but does not raise a python error...!
+    # for an incompatible geometry ogr returns None... but does not raise a
+    # python error...!
     if pts is None:
         if flatten:
             return np.empty((0, 2))
@@ -280,21 +343,25 @@ def ogrline2array(ogr_line, flatten=True):
 
 def points_in_buffer(points, vertices, dist):
     """
-    Calculate a mask indicating whether points lie within a distance (given by dist) of a line specified by the vertices arg.
+    Calculate a mask indicating whether points lie within a distance (given by dist) of a line,
+    specified by the vertices arg.
     """
     out = np.empty((points.shape[0],), dtype=np.bool)  # its a byte, really
-    lib.p_in_buf(points, out, vertices, points.shape[0], vertices.shape[0], dist)
+    lib.p_in_buf(points, out, vertices, points.shape[
+                 0], vertices.shape[0], dist)
     return out
 
 
 def get_triangle_geometry(xy, z, triangles, n_triangles):
     """
     Calculate the geometry of each triangle in a triangulation as an array with rows: (tanv2_i,bb_xy_i,bb_z_i).
-    Here tanv2 is the squared tangent of the slope angle, bb_xy is the maximal edge of the planar bounding box, and bb_z_i the size of the vertical bounding box.
+    Here tanv2 is the squared tangent of the slope angle,
+    bb_xy is the maximal edge of the planar bounding box, and bb_z_i the size of the vertical bounding box.
     Args:
         xy: The vertices of the triangulation.
         z: The z values of the vertices.
-        triangles: ctypes pointer to a c-contiguous int array of triangles, where each row contains the indices of the three vertices of a triangle.
+        triangles: ctypes pointer to a c-contiguous int array of triangles,
+                   where each row contains the indices of the three vertices of a triangle.
         n_triangles: The number of triangles (rows in triangle array== size /3)
     Returns:
         Numpy array of shape (n,3) containing the geometry numbers for each triangle in the triangulation.
@@ -303,13 +370,15 @@ def get_triangle_geometry(xy, z, triangles, n_triangles):
     lib.get_triangle_geometry(xy, z, triangles, out, n_triangles)
     return out
 
+
 def get_normals(xy, z, triangles, n_triangles):
     """
     Compute normals vectors for a triangulation.
      Args:
         xy: The vertices of the triangulation.
         z: The z values of the vertices.
-        triangles: ctypes pointer to a c-contiguous int array of triangles, where each row contains the indices of the three vertices of a triangle.
+        triangles: ctypes pointer to a c-contiguous int array of triangles,
+                   where each row contains the indices of the three vertices of a triangle.
         n_triangles: The number of triangles (rows in triangle array== size /3)
     Returns:
         Numpy array of shape (n,3) containing the geometry numbers for each triangle in the triangulation.
@@ -320,7 +389,8 @@ def get_normals(xy, z, triangles, n_triangles):
 
 
 def get_bounds(geom):
-    """Just return the bounding box for a geometry represented as a numpy array (or a list of arrays correpsponding to a polygon)."""
+    """Just return the bounding box for a geometry represented as a numpy array
+    (or a list of arrays correpsponding to a polygon)."""
     if isinstance(geom, list):
         arr = geom[0]
     else:
@@ -356,7 +426,8 @@ def bbox_intersection(bbox1, bbox2):
 
 def bbox_to_polygon(bbox):
     """Convert a box given as (xmin,ymin,xmax,ymax) to a OGR polygon geometry."""
-    points = ((bbox[0], bbox[1]), (bbox[2], bbox[1]), (bbox[2], bbox[3]), (bbox[0], bbox[3]))
+    points = ((bbox[0], bbox[1]), (bbox[2], bbox[1]),
+              (bbox[2], bbox[3]), (bbox[0], bbox[3]))
     poly = points2ogr_polygon(points)
     return poly
 
@@ -407,14 +478,15 @@ def linestring_displacements(xy):
     Calculate the 'normal'/displacement vectors needed to buffer a line string (xy array of shape (n,2))
     """
     dxy = xy[1:] - xy[:-1]
-    ndxy = np.sqrt((dxy**2).sum(axis=1)).reshape((dxy.shape[0], 1))  # should return a 1d array...
+    # should return a 1d array...
+    ndxy = np.sqrt((dxy ** 2).sum(axis=1)).reshape((dxy.shape[0], 1))
     hat = np.column_stack((-dxy[:, 1], dxy[:, 0])) / ndxy  # dxy should be 2d
     normals = hat[0]
     # calculate the 'inner normals' - if any...
     if hat.shape[0] > 1:
         dots = (hat[:-1] * hat[1:]).sum(axis=1).reshape((hat.shape[0] - 1, 1))
         # dot of inner normal with corresponding hat should be = 1
-        #<(v1+v2),v1>=1+<v1,v2>=<(v1+v2),v2>
+        # <(v1+v2),v1>=1+<v1,v2>=<(v1+v2),v2>
         # assert ( not (dots==-1).any() ) - no 180 deg. turns!
         alpha = 1 / (1 + dots)
         # should be 2d - even with one row - else use np.atleast_2d
@@ -425,7 +497,8 @@ def linestring_displacements(xy):
 
 
 def unit_test(n=1000):
-    verts = np.asarray(((0, 0), (1, 0), (1, 1), (0, 1), (0, 0)), dtype=np.float64)
+    verts = np.asarray(
+        ((0, 0), (1, 0), (1, 1), (0, 1), (0, 0)), dtype=np.float64)
     pts = np.random.rand(n, 2).astype(np.float64)  # n points in unit square
     M = points_in_buffer(pts, verts, 2)
     assert M.sum() == n

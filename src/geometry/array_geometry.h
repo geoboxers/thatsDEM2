@@ -22,24 +22,33 @@ void fill_it_up(unsigned char *out, unsigned int *hmap, int rows, int cols, int 
 void find_floating_voxels(int *lab,  int *out, int gcomp, int rows, int cols, int stacks);
 int fill_spatial_index(int *sorted_flat_indices, int *index, int npoints, int max_index);
 typedef double(*FILTER_FUNC)(double *, double , int*, double* , double* , double, double, void*);
-void pc_min_filter(double *xy, double *pc_xy, double *pc_z, double *z_out, double filter_rad, double nd_val, int *spatial_index, double *header, int npoints);
-void pc_spike_filter(double *xy, double *z, double *pc_xy, double *pc_z, double *z_out, double filter_rad, double tanv2, double zlim, int *spatial_index, double *header, int npoints);
-void pc_mean_filter(double *xy, double *pc_xy, double *pc_z, double *z_out, double filter_rad, double nd_val,int *spatial_index, double *header, int npoints);
-void pc_median_filter(double *xy, double *pc_xy, double *pc_z, double *z_out, double filter_rad, double nd_val, int *spatial_index, double *header, int npoints);
-void pc_idw_filter(double *xy, double *pc_xy, double *pc_z, double *z_out, double filter_rad, double nd_val, int *spatial_index, double *header, int npoints);
-void pc_var_filter(double *xy, double *pc_xy, double *pc_z, double *z_out, double filter_rad, double nd_val, int *spatial_index, double *header, int npoints);
-void pc_density_filter(double *xy, double *pc_xy, double *pc_z, double *z_out, double filter_rad, int *spatial_index, double *header, int npoints);
-void pc_distance_filter(double *xy,double *pc_xy, double *pc_z, double *z_out, double filter_rad, double nd_val, int *spatial_index, double *header, int npoints);
-void pc_nearest_filter(double *xy,double *pc_xy, double *pc_z, double *z_out, double filter_rad, double nd_val, int *spatial_index, double *header, int npoints);
-void pc_ballcount_filter(double *xy,double *z,double *pc_xy,double *pc_z, double *out,double filter_rad,double nd_val,int *spatial_index,double *header,int npoints);
-void pc_ray_mean_dist_filter(double *xy,
-                      double *z,  
-                      double *pc_xy, 
-                      double *pc_z, 
-                      double *out, 
-                      double filter_rad, 
-                      int *spatial_index, 
-                      double *header, 
-                      int npoints);
+void apply_filter(double *xy, 
+                  double *z, 
+                  double *pc_xy, 
+                  double *pc_z, 
+                  double *vals_out, 
+                  int *spatial_index, 
+                  double *header,  
+                  int npoints, 
+                  FILTER_FUNC filter_func,  
+                  double filter_rad, 
+                  double nd_val, 
+                  void *opt_params);
+                  
+/* declare all the filter builtin functions*/
+double min_filter(double *, double, int *, double *, double *, double, double, void *);
+double max_filter(double *, double, int *, double *, double *, double, double, void *);
+double var_filter(double *, double, int *, double *, double *, double, double, void *);
+double mean_filter(double *, double, int *, double *, double *, double, double, void *);
+double median_filter(double *, double, int *, double *, double *, double, double, void *);
+double spike_filter(double *, double, int *, double *, double *, double, double, void *);
+double density_filter(double *, double, int *, double *, double *, double, double, void *);
+double distance_filter(double *, double, int *, double *, double *, double, double, void *);
+double nearest_filter(double *, double, int *, double *, double *, double, double, void *);
+double ballcount_filter(double *, double, int *, double *, double *, double, double, void *);
+double ray_mean_dist_filter(double *, double, int *, double *, double *, double, double, void *);
+double idw_filter(double *, double, int *, double *, double *, double, double, void *);
+/* end filter functions */
+
 void moving_bins(double *z, int *nout, double rad, int n);
 void binary_fill_gaps(char *M, char *out, int nrows, int ncols);
