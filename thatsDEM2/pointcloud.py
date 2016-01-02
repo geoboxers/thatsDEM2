@@ -1261,7 +1261,7 @@ class Pointcloud(object):
         Returns:
             1D array of counts.
         """
-        return self.builtin_3d_filter(filter_rad, "ballcount_filter", xy, z, 0)
+        return self.builtin_3d_filter(filter_rad, "ballcount_filter", xy, z, 0).astype(np.int32)
 
     def ray_mean_dist_filter(self, filter_rad, xy=None, z=None):
         """
@@ -1299,7 +1299,7 @@ class Pointcloud(object):
         arr_type = ctypes.c_double * 3
         params = arr_type((filter_rad * 0.2) ** 2, tanv2, zlim)
         p_params = ctypes.cast(params, ctypes.c_void_p)
-        return self.builtin_3d_filter(filter_rad, "spike_filter", params=p_params)
+        return self.builtin_3d_filter(filter_rad, "spike_filter", params=p_params).astype(np.bool)
 
 
 class LidarPointcloud(Pointcloud):
