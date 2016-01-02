@@ -1,6 +1,6 @@
 /*
-* Copyright (c) 2015, Danish Geodata Agency <gst@gst.dk>
- * 
+ * Original work Copyright (c) 2015, Danish Geodata Agency <gst@gst.dk>
+ * Modified work Copyright (c) 2015-2016, Geoboxers <info@geoboxers.com>
  * Permission to use, copy, modify, and/or distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
  * copyright notice and this permission notice appear in all copies.
@@ -35,7 +35,7 @@ void apply_filter(double *xy,
                   double nd_val, 
                   void *opt_params);
                   
-/* declare all the filter builtin functions*/
+/* declare all the builtin filter functions*/
 double min_filter(double *, double, int *, double *, double *, double, double, void *);
 double max_filter(double *, double, int *, double *, double *, double, double, void *);
 double var_filter(double *, double, int *, double *, double *, double, double, void *);
