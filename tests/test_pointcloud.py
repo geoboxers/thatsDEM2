@@ -258,7 +258,7 @@ class TestPointcloud(unittest.TestCase):
         c = np.ones(100) * 5.0
         pc.set_attribute("c", c)
         pc.sort_spatially(2)
-        z = pc.custom_filter(2, self.custom_filter, attr="c")
+        z = pc.apply_2d_filter(2, self.custom_filter, attr="c")
         self.assertTrue((z == 5).all())
 
     def _get_named_temp_file(self, ext):

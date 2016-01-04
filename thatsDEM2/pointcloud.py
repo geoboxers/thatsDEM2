@@ -398,7 +398,7 @@ class Pointcloud(object):
         Set or add a an additional pointcloud attribute.
         Args:
             name: name of attribute
-            array: array like, must have dimension 1 and same size as self.
+            value: array like, must have dimension 1 and same size as self.
         """
         if name in ("xy", "z"):
             raise ValueError(
@@ -1110,42 +1110,51 @@ class Pointcloud(object):
             raise Warning(
                 "Filter radius larger than cell size of spatial index will not catch all points!")
 
-    def custom_filter(self, filter_rad, filter_func, xy=None, z=None,
-                          nd_val=-9999, attr="z", params=None):
+    def apply_filter(self, filter_rad, filter_func, xy, z, nd_val, attr, params):
+        """Just apply a filter (string == builtin or a python callable)"""
         self.validate_filter_args(filter_rad)
-        if xy is None or z is None:
-            assert xy is None and z is None
-            xy = self.xy
-            z = self.z
         vals = np.require(self.get_array(attr), dtype=np.float64)
-        out = array_geometry.apply_custom_filter(xy, z, self.xy, vals,
+        out = array_geometry.apply_filter(xy, z, self.xy, vals,
                                                  self.spatial_index, self.index_header,
                                                  filter_func, filter_rad, nd_val, params)
         return out
                          
-    def builtin_2d_filter(self, filter_rad, filter_name, xy=None,
+    def apply_2d_filter(self, filter_rad, filter_func, xy=None,
                           nd_val=-9999, attr="z", params=None):
-        self.validate_filter_args(filter_rad)
+        """Apply a 2d filter along supplied xy or self.xy.
+        Args:
+            filter_rad: filter radius (less than sorting cell size).
+            filter_func: A python callable of type array_geometry.FILTER_FUNC,
+                         or a name (string) of a bultin filter.
+            xy: Input points to filter along (will use self.xy if None).
+            nd_val: No data value (if relevant).
+            attr: Attribute name of value to perform filter on (defaults to z).
+        Returns:
+            1d-array of filtered values.
+        """
         if xy is None:
             xy = self.xy
-        vals = np.require(self.get_array(attr), dtype=np.float64)
-        out = array_geometry.apply_library_filter(xy, None, self.xy, vals,
-                                                  self.spatial_index, self.index_header,
-                                                  filter_name, filter_rad, nd_val, params)
-        return out
+        return self.apply_filter(filter_rad, filter_func, xy, None, nd_val, attr, params)
 
-    def builtin_3d_filter(self, filter_rad, filter_name, xy=None, z=None,
+    def apply_3d_filter(self, filter_rad, filter_func, xy=None, z=None,
                           nd_val=-9999, attr="z", params=None):
-        self.validate_filter_args(filter_rad)
+        """Apply a 3d filter along supplied xy and z or self.xy, self.z.
+        Args:
+            filter_rad: filter radius (less than sorting cell size).
+            filter_func: A python callable of type array_geometry.FILTER_FUNC,
+                         or a name (string) of a bultin filter.
+            xy: Input points to filter along (will use self.xy if None).
+            z: z-coord of input points.
+            nd_val: No data value (if relevant).
+            attr: Attribute name of value to perform filter on (defaults to z).
+        Returns:
+            1d-array of filtered values.
+        """
         if xy is None or z is None:
             assert xy is None and z is None
             xy = self.xy
             z = self.z
-        vals = np.require(self.get_array(attr), dtype=np.float64)
-        out = array_geometry.apply_library_filter(xy, z, self.xy, vals,
-                                                  self.spatial_index, self.index_header,
-                                                  filter_name, filter_rad, nd_val, params)
-        return out
+        return self.apply_filter(filter_rad, filter_func, xy, z, nd_val, attr, params)
     
     # '2.5D' filters
     def min_filter(self, filter_rad, xy=None, nd_val=-9999, attr="z"):
@@ -1157,7 +1166,7 @@ class Pointcloud(object):
         Returns:
             1D array of filtered values.
         """
-        return self.builtin_2d_filter(filter_rad, "min_filter", xy, nd_val, attr)
+        return self.apply_2d_filter(filter_rad, "min_filter", xy, nd_val, attr)
 
     def mean_filter(self, filter_rad, xy=None, nd_val=-9999, attr="z"):
         """
@@ -1168,7 +1177,7 @@ class Pointcloud(object):
         Returns:
             1D array of filtered values.
         """
-        return self.builtin_2d_filter(filter_rad, "mean_filter", xy, nd_val, attr)
+        return self.apply_2d_filter(filter_rad, "mean_filter", xy, nd_val, attr)
 
     def max_filter(self, filter_rad, xy=None, nd_val=-9999, attr="z"):
         """
@@ -1180,7 +1189,7 @@ class Pointcloud(object):
             1D array of filtered values.
         """
 
-        return self.builtin_2d_filter(filter_rad, "max_filter", xy, nd_val, attr)
+        return self.apply_2d_filter(filter_rad, "max_filter", xy, nd_val, attr)
 
     def median_filter(self, filter_rad, xy=None, nd_val=-9999, attr="z"):
         """
@@ -1191,7 +1200,7 @@ class Pointcloud(object):
         Returns:
             1D array of filtered values.
         """
-        return self.builtin_2d_filter(filter_rad, "median_filter", xy, nd_val, attr)
+        return self.apply_2d_filter(filter_rad, "median_filter", xy, nd_val, attr)
 
     def var_filter(self, filter_rad, xy=None, nd_val=-9999, attr="z"):
         """
@@ -1202,7 +1211,7 @@ class Pointcloud(object):
         Returns:
             1D array of filtered values.
         """
-        return self.builtin_2d_filter(filter_rad, "var_filter", xy, nd_val, attr)
+        return self.apply_2d_filter(filter_rad, "var_filter", xy, nd_val, attr)
 
     def idw_filter(self, filter_rad, xy=None, nd_val=-9999, attr="z"):
         """
@@ -1214,7 +1223,7 @@ class Pointcloud(object):
         Returns:
             1D array of filtered values.
         """
-        return self.builtin_2d_filter(filter_rad, "mean_filter", xy, nd_val, attr)
+        return self.apply_2d_filter(filter_rad, "mean_filter", xy, nd_val, attr)
 
     # 'Geometric' filters
     def distance_filter(self, filter_rad, xy, nd_val=9999):
@@ -1226,7 +1235,7 @@ class Pointcloud(object):
         Returns:
             1D array of filtered values.
         """
-        return self.builtin_2d_filter(filter_rad, "distance_filter", xy, nd_val)
+        return self.apply_2d_filter(filter_rad, "distance_filter", xy, nd_val)
 
     def nearest_filter(self, filter_rad, xy, nd_val=-1):
         """
@@ -1237,7 +1246,7 @@ class Pointcloud(object):
         Returns:
             1D array of filtered values.
         """
-        return self.builtin_2d_filter(filter_rad, "nearest_filter", xy, nd_val).astype(np.int32)
+        return self.apply_2d_filter(filter_rad, "nearest_filter", xy, nd_val).astype(np.int32)
 
     def density_filter(self, filter_rad, xy=None):
         """
@@ -1248,7 +1257,7 @@ class Pointcloud(object):
         Returns:
             1D array of filtered values.
         """
-        return self.builtin_2d_filter(filter_rad, "density_filter", xy, 0)
+        return self.apply_2d_filter(filter_rad, "density_filter", xy, 0)
 
     # 3D filters
     def ballcount_filter(self, filter_rad, xy=None, z=None, nd_val=0):
@@ -1261,7 +1270,7 @@ class Pointcloud(object):
         Returns:
             1D array of counts.
         """
-        return self.builtin_3d_filter(filter_rad, "ballcount_filter", xy, z, 0).astype(np.int32)
+        return self.apply_3d_filter(filter_rad, "ballcount_filter", xy, z, 0).astype(np.int32)
 
     def ray_mean_dist_filter(self, filter_rad, xy=None, z=None):
         """
@@ -1274,7 +1283,7 @@ class Pointcloud(object):
         Returns:
             1D array of spike indications (0 or 1).
         """
-        return self.builtin_3d_filter(filter_rad, "ray_mean_dist_filter", xy, z, 0)
+        return self.apply_3d_filter(filter_rad, "ray_mean_dist_filter", xy, z, 0)
 
     def spike_filter(self, filter_rad, tanv2, zlim=0.2):
         """
@@ -1299,7 +1308,7 @@ class Pointcloud(object):
         arr_type = ctypes.c_double * 3
         params = arr_type((filter_rad * 0.2) ** 2, tanv2, zlim)
         p_params = ctypes.cast(params, ctypes.c_void_p)
-        return self.builtin_3d_filter(filter_rad, "spike_filter", params=p_params).astype(np.bool)
+        return self.apply_3d_filter(filter_rad, "spike_filter", params=p_params).astype(np.bool)
 
 
 class LidarPointcloud(Pointcloud):

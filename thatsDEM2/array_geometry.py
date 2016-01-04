@@ -39,9 +39,14 @@ INT32_VOXELS = np.ctypeslib.ndpointer(
     dtype=np.int32, ndim=3, flags=['C', 'O', 'A', 'W'])
 INT32_TYPE = np.ctypeslib.ndpointer(
     dtype=np.int32, ndim=1, flags=['C', 'O', 'A', 'W'])
+# ctypes pointer types
 LP_CINT = ctypes.POINTER(ctypes.c_int)
 LP_CCHAR = ctypes.POINTER(ctypes.c_char)
+LP_CDOUBLE = ctypes.POINTER(ctypes.c_double)
+
+# Load the library using np.ctypeslib
 lib = np.ctypeslib.load_library(LIBNAME, LIBDIR)
+
 ##############
 # corresponds to
 # array_geometry.h
@@ -72,21 +77,21 @@ lib.mark_bd_vertices.restype = None
 lib.fill_spatial_index.argtypes = [
     INT32_TYPE, INT32_TYPE, ctypes.c_int, ctypes.c_int]
 lib.fill_spatial_index.restype = ctypes.c_int
-LP_C_DOUBLE = ctypes.POINTER(ctypes.c_double)
-LP_C_INT = ctypes.POINTER(ctypes.c_int)
+
+
 FILTER_FUNC_TYPE = ctypes.CFUNCTYPE(ctypes.c_double,
-                                    LP_C_DOUBLE,
+                                    LP_CDOUBLE,
                                     ctypes.c_double,
-                                    LP_C_INT,
-                                    LP_C_DOUBLE,
-                                    LP_C_DOUBLE,
+                                    LP_CINT,
+                                    LP_CDOUBLE,
+                                    LP_CDOUBLE,
                                     ctypes.c_double,
                                     ctypes.c_double,
                                     ctypes.c_void_p)
 
 lib.apply_filter.argtypes = (
     XY_TYPE,
-    LP_C_DOUBLE,
+    LP_CDOUBLE,
     XY_TYPE,
     Z_TYPE,
     Z_TYPE,
@@ -134,17 +139,29 @@ lib.binary_fill_gaps.argtypes = [MASK2D_TYPE,
                                  MASK2D_TYPE, ctypes.c_int, ctypes.c_int]
 lib.binary_fill_gaps.restype = None
 
+# Names of defined filter functions
+LIBRARY_FILTERS = ("mean_filter",
+                   "median_filter",
+                   "min_filter",
+                   "max_filter",
+                   "var_filter",
+                   "density_filter",
+                   "distance_filter",
+                   "nearest_filter",
+                   "ballcount_filter",
+                   "spike_filter",
+                   "ray_mean_dist_filter")
 
-def apply_library_filter(along_xy, along_z,
-                         pc_xy, pc_attr,
-                         spatial_index,
-                         index_header,
-                         filter_name,
-                         filter_rad,
-                         nd_val,
-                         params=None):
+def apply_filter(along_xy, along_z,
+                 pc_xy, pc_attr,
+                 spatial_index,
+                 index_header,
+                 filter_func,
+                 filter_rad,
+                 nd_val,
+                 params=None):
     """
-    Apply a bultin library filter
+    Apply a bultin library filter, or a filter defined by a python function.
     Args:
         along_xy: Numpy array of input points.
         along_z: Numpy array of z values if 3d-filter, else None.
@@ -152,7 +169,7 @@ def apply_library_filter(along_xy, along_z,
         pc_attr: The values to apply the filter on (z if a geometric filter).
         spatial_index: Pointcloud spatial index (see Pointcloud.sort_spatially)
         index_header: Pointcloud index metadata header.
-        filter_name: A name of one of the builtin filters.
+        filter_func: A name of one of the builtin filters, or a python callable.
         filter_rad: Filter radius (which the filter function will use as needed).
         nd_val: No data value.
         params: Optional addtional parameters. MUST be a ctypes.c_void_p pointer if not None.
@@ -160,50 +177,19 @@ def apply_library_filter(along_xy, along_z,
         1d array of filtered values
     """
     out = np.zeros_like(pc_attr)
-    addr = ctypes.cast(getattr(lib, filter_name), ctypes.c_void_p).value
-    func = FILTER_FUNC_TYPE(addr)
-    if along_z is not None:
-        # If using a 3d filter - construct pointer
-        assert along_z.shape[0] == along_xy.shape[0]
-        pz = along_z.ctypes.data_as(LP_C_DOUBLE)
+    if callable(filter_func):
+        func =  FILTER_FUNC_TYPE(filter_func)
     else:
-        pz = None
-    lib.apply_filter(along_xy, pz, pc_xy, pc_attr, out, spatial_index,
-                     index_header, along_xy.shape[0], func, filter_rad,
-                     nd_val, params)
-    return out
-
-
-def apply_custom_filter(along_xy, along_z,
-                        pc_xy, pc_attr,
-                        spatial_index,
-                        index_header,
-                        filter_func,
-                        filter_rad,
-                        nd_val,
-                        params=None):
-    """
-    Apply a custom python of type FILTER_FUNC.
-    Args:
-        along_xy: Numpy array of input points.
-        along_z: Numpy array of z values if 3d-filter, else None.
-        pc_xy: The points to apply the filter on.
-        pc_attr: The values to apply the filter on (z if a geometric filter).
-        spatial_index: Pointcloud spatial index (see Pointcloud.sort_spatially)
-        index_header: Pointcloud index metadata header.
-        filter_func: Python function, castable to FILTER_FUNC.
-        filter_rad: Filter radius (which the filter function will use as needed).
-        nd_val: No data value.
-        params: Optional addtional parameters. MUST be a ctypes.c_void_p pointer if not None.
-    Returns:
-        1d array of filtered values
-    """
-    out = np.zeros_like(pc_attr)
-    func = FILTER_FUNC_TYPE(filter_func)
+        if not isinstance(filter_func, basestring):
+            raise ValueError("filter_func must be a name (string) or a callable.")
+        if filter_func not in LIBRARY_FILTERS:
+            raise ValueError("No builtin filter called " + filter_func)
+        addr = ctypes.cast(getattr(lib, filter_func), ctypes.c_void_p).value
+        func = FILTER_FUNC_TYPE(addr)
     if along_z is not None:
         # If using a 3d filter - construct pointer
         assert along_z.shape[0] == along_xy.shape[0]
-        pz = along_z.ctypes.data_as(LP_C_DOUBLE)
+        pz = along_z.ctypes.data_as(LP_CDOUBLE)
     else:
         pz = None
     lib.apply_filter(along_xy, pz, pc_xy, pc_attr, out, spatial_index,
