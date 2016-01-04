@@ -1223,7 +1223,7 @@ class Pointcloud(object):
         Returns:
             1D array of filtered values.
         """
-        return self.apply_2d_filter(filter_rad, "mean_filter", xy, nd_val, attr)
+        return self.apply_2d_filter(filter_rad, "idw_filter", xy, nd_val, attr)
 
     # 'Geometric' filters
     def distance_filter(self, filter_rad, xy, nd_val=9999):
