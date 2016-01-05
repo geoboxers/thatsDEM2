@@ -12,6 +12,7 @@ import logging
 import numpy as np
 import tempfile
 import json
+import ctypes
 from thatsDEM2 import pointcloud
 
 LOG = logging.getLogger(__name__)
@@ -260,6 +261,16 @@ class TestPointcloud(unittest.TestCase):
         pc.sort_spatially(2)
         z = pc.apply_2d_filter(2, self.custom_filter, attr="c")
         self.assertTrue((z == 5).all())
+    
+    def test_3dmean_filter(self):
+        LOG.info("Test pointcloud custom filter")
+        pc = pointcloud.from_array(np.ones((10, 10)), [0, 1, 0, 10, 0, -1])
+        c = np.ones(100) * 5.0
+        pc.set_attribute("c", c)
+        pc.sort_spatially(2)
+        mc = pc.mean_3d_filter(1, attr="c")
+        # LOG.info("mc is " + str(mc))
+        self.assertTrue((mc == 5).all())
 
     def _get_named_temp_file(self, ext):
         f = tempfile.NamedTemporaryFile(suffix=ext, delete=False)

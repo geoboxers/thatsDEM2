@@ -151,7 +151,8 @@ LIBRARY_FILTERS = ("mean_filter",
                    "nearest_filter",
                    "ballcount_filter",
                    "spike_filter",
-                   "ray_mean_dist_filter")
+                   "ray_mean_dist_filter",
+                   "mean_3d_filter")
 
 def apply_filter(along_xy, along_z,
                  pc_xy, pc_attr,
@@ -177,7 +178,7 @@ def apply_filter(along_xy, along_z,
     Returns:
         1d array of filtered values
     """
-    out = np.zeros_like(pc_attr)
+    out = np.zeros(along_xy.shape[0], dtype=np.float64)
     if callable(filter_func):
         func =  FILTER_FUNC_TYPE(filter_func)
     else:
@@ -193,6 +194,8 @@ def apply_filter(along_xy, along_z,
         pz = along_z.ctypes.data_as(LP_CDOUBLE)
     else:
         pz = None
+    if params is not None and not isinstance(params, ctypes.c_void_p):
+        raise ValueError("params must be None or a ctypes.c_void_p pointer!")
     lib.apply_filter(along_xy, pz, pc_xy, pc_attr, out, spatial_index,
                      index_header, along_xy.shape[0], func, filter_rad,
                      nd_val, params)

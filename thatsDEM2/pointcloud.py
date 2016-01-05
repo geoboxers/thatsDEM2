@@ -1137,8 +1137,11 @@ class Pointcloud(object):
         return self.apply_filter(filter_rad, filter_func, xy, None, nd_val, attr, params)
 
     def apply_3d_filter(self, filter_rad, filter_func, xy=None, z=None,
-                          nd_val=-9999, attr="z", params=None):
+                          nd_val=-9999, params=None):
         """Apply a 3d filter along supplied xy and z or self.xy, self.z.
+        3d filters are geometric in the sense, that pointcloud z must be supplied.
+        Filtering of another value (besides z) can be implemented
+        by supplying a pointer to an array in params.
         Args:
             filter_rad: filter radius (less than sorting cell size).
             filter_func: A python callable of type array_geometry.FILTER_FUNC,
@@ -1154,7 +1157,7 @@ class Pointcloud(object):
             assert xy is None and z is None
             xy = self.xy
             z = self.z
-        return self.apply_filter(filter_rad, filter_func, xy, z, nd_val, attr, params)
+        return self.apply_filter(filter_rad, filter_func, xy, z, nd_val, "z", params)
     
     # '2.5D' filters
     def min_filter(self, filter_rad, xy=None, nd_val=-9999, attr="z"):
@@ -1284,6 +1287,24 @@ class Pointcloud(object):
             1D array of spike indications (0 or 1).
         """
         return self.apply_3d_filter(filter_rad, "ray_mean_dist_filter", xy, z, 0)
+
+    def mean_3d_filter(self, filter_rad, xy=None, z=None, nd_val=-9999, attr="z"):
+        """
+        Calculate mean of an attributte (defaults to z).
+        Will calculate mean value of points in a 3d-ball of radius filter_rad.
+        Args:
+            filter_rad: The radius of the filter. Should not be larger than cell size in spatial index (for now).
+            xy: Points to filter along (optional).
+            z: Z coord of points to filter along (optional).
+        Returns:
+            1D array of filtered values.
+        """
+        if attr != "z":
+            vals = np.require(self.get_array(attr), dtype=np.float64)
+            p_to_vals = vals.ctypes.data_as(ctypes.c_void_p)
+        else:
+            p_to_vals = None
+        return self.apply_3d_filter(filter_rad, "mean_3d_filter", xy, z, nd_val, params=p_to_vals)
 
     def spike_filter(self, filter_rad, tanv2, zlim=0.2):
         """

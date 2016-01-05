@@ -47,6 +47,7 @@ double distance_filter(double *, double, int *, double *, double *, double, doub
 double nearest_filter(double *, double, int *, double *, double *, double, double, void *);
 double ballcount_filter(double *, double, int *, double *, double *, double, double, void *);
 double ray_mean_dist_filter(double *, double, int *, double *, double *, double, double, void *);
+double mean_3d_filter(double *, double, int *, double *, double *, double, double, void *);
 double idw_filter(double *, double, int *, double *, double *, double, double, void *);
 /* end filter functions */
 

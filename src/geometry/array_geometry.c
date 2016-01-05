@@ -563,6 +563,35 @@ double ballcount_filter(double *xy,
     return (double) n;
 }
 
+/* Count number of points within a ball of radius frad2 */
+double mean_3d_filter(double *xy,
+                      double z,
+                      int *indices,
+                      double *pc_xy,
+                      double *pc_z,
+                      double frad2,
+                      double nd_val,
+                      void *opt_params){
+    int i,i1,i2,j,n=0;
+    double d, m=0, *vals;
+    /*if opt_params is supplied, this MUST be a pointer to a double array*/
+    vals = (opt_params) ? (double*) opt_params : pc_z;
+    for(i=0; i<3; i++){
+		i1=indices[2*i];
+		i2=indices[2*i+1];
+		for(j=i1;j<i2;j++){
+			d=SQUARE((pc_xy[2*j]-xy[0]))+SQUARE((pc_xy[2*j+1]-xy[1]))+SQUARE((pc_z[j]-z));
+			if (d<=frad2){
+				n+=1;
+                m+=vals[j];
+			}
+			
+		}
+	}
+    return (n>0)? (m/n) : nd_val;
+}
+
+
 double idw_filter(double *xy, double z, int *indices, double *pc_xy, double *pc_z, double frad2, double nd_val, void *opt_params){
 	int i,i1,i2,j,n=0;
 	double m=0,d,w=0,ww;
