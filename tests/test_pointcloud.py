@@ -230,6 +230,24 @@ class TestPointcloud(unittest.TestCase):
         pc.sort_spatially(2)
         idx = pc.nearest_filter(2, xy=pc.xy + 0.25)
         self.assertTrue((idx == np.arange(0, 100)).all())
+    
+    def test_filter_with_less_input_points(self):
+        LOG.info("Test pointcloud nearest filter")
+        pc = pointcloud.from_array(np.ones((10, 10)), [0, 1, 0, 10, 0, -1])
+        pc.sort_spatially(2)
+        xy = pc.xy[2] + np.random.rand(3,2)*0.25
+        idx = pc.nearest_filter(1, xy=xy)
+        self.assertEqual(idx.shape[0], xy.shape[0])
+        self.assertTrue((idx == 2).all())
+    
+    def test_filter_with_more_input_points(self):
+        LOG.info("Test pointcloud nearest filter")
+        pc = pointcloud.from_array(np.ones((10, 10)), [0, 1, 0, 10, 0, -1])
+        pc.sort_spatially(2)
+        xy = pc.xy[2] + np.random.rand(400,2)*0.25
+        idx = pc.nearest_filter(1, xy=xy)
+        self.assertEqual(idx.shape[0], xy.shape[0])
+        self.assertTrue((idx == 2).all())
 
     def test_spike_filter(self):
         LOG.info("Test pointcloud spike filter")
