@@ -348,12 +348,14 @@ class PolygonTriangulation(TriangulationBase):
                  outer,
                  holes=None,
                  inner_xy=None,
-                 breaklines=None,
+                 add_segments=None,
                  cs=-1):  # low cs will speed up point in polygon
+        # breaklines must be segments of the form ((i1,i2),(i3, i4)),....)
+        # referring to pts in self.pts
         # first element in arr_list is outer ring, rest is holes - GEOS rings tend
-        # to be closed, duplicate first pt. we dont need that.
+        # to be closed,  we dont want that.
         if (outer[0, :] == outer[-1, :]).all():
-            outer = outer[:-1]  # we will make a copy later..
+            raise ValueError("Dont use closed rings here!")
         self.points = outer.copy()
         self.segments = np.zeros((self.points.shape[0], 2), dtype=np.int32)
         self.segments[:, 0] = np.arange(0, self.points.shape[0])
@@ -364,7 +366,7 @@ class PolygonTriangulation(TriangulationBase):
             for arr in holes:
                 #modify in place
                 if (arr[0, :] == arr[-1, :]).all():
-                    arr = arr[:-1]
+                    raise ValueError("Dont use closed rings here!")
                 hole_centers.append(arr.mean(axis=0))
                 segments = np.zeros((arr.shape[0], 2), dtype=np.int32)
                 segments[:, 0] = np.arange(self.points.shape[0], self.points.shape[0] + arr.shape[0])
@@ -380,12 +382,12 @@ class PolygonTriangulation(TriangulationBase):
             self.holes = None
             p_holes = None
             n_holes = 0
-        if breaklines is not None:
-            i = self.points.shape[0]
-            self.points = np.vstack((self.points, breaklines))
-            self.segments = np.vstack((self.segments,(i,i+1)))
+        
         if inner_xy is not None:
             self.points=np.vstack((self.points,inner_xy))
+        if add_segments is not None:
+            self.segments = np.vstack((self.segments, add_segments))
+            assert self.segments.max() < self.points.shape[0]
         self.segments = np.require(self.segments, dtype=np.int32, requirements=['A', 'O', 'C'])
         self.points = np.require(self.points, dtype=np.float64, requirements=['A', 'O', 'C'])
         self.holes = np.require(self.holes, dtype=np.float64, requirements=['A', 'O', 'C'])
@@ -404,14 +406,14 @@ class PolygonTriangulation(TriangulationBase):
             n_holes,
             ctypes.byref(nt))
         self.ntrig = nt.value
-        self.index = lib.build_index(
-            self.points.ctypes.data_as(LP_CDOUBLE),
-            self.vertices,
-            cs,
-            self.points.shape[0],
-            self.ntrig)
-        if self.index is None:
-            raise Exception("Failed to build index...")
+        #self.index = lib.build_index(
+        #    self.points.ctypes.data_as(LP_CDOUBLE),
+        #    self.vertices,
+        #    cs,
+        #    self.points.shape[0],
+        #    self.ntrig)
+        #if self.index is None:
+        #    raise Exception("Failed to build index...")
 
     def points_in_polygon(self, xy):
         # based on what the index cell size is, this can be really fast and very robust!
