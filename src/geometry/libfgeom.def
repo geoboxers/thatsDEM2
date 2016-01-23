@@ -9,6 +9,7 @@ EXPORTS
     max_filter
     mean_filter
     median_filter
+    mean_3d_filter
     spike_filter
     idw_filter
     var_filter
