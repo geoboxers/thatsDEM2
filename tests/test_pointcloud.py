@@ -264,8 +264,8 @@ class TestPointcloud(unittest.TestCase):
         m = 0.0
         n = 0
         for i in range(3):
-            j1 = slices[i * 3]
-            j2 = slices[i * 3 + 1]
+            j1 = slices[i * 2]
+            j2 = slices[i * 2 + 1]
             for j in range(j1, j2):
                 m += pc_z[j]
                 n += 1
