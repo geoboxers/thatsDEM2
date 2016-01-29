@@ -1,5 +1,7 @@
 # README #
 
+[![Build Status](https://travis-ci.org/geoboxers/thatsDEM2.svg?branch=master)](https://travis-ci.org/geoboxers/thatsDEM2)
+
 thatsDEM2!
 
 This project is forked from the [thatsDEM project](https://bitbucket.org/gstudvikler/thatsdem) of the Danish Geodata Agency.
