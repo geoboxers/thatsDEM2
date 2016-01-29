@@ -20,6 +20,8 @@
 #else
 #define DLL_EXPORT  
 #endif
+#define MIN(x,y)  ((x<y) ? x:y)
+#define MAX(a,b) (a>b ? a: b)
 /*simple bilnear interpolation here:
 * If geo_ref is NULL, we assume that xy is already in array coordinates,
 * If geo_ref is NOT NULL it should be an array of len 4: x1,cx,y2,cy - with (x1,y2) being the center of the upper left 'pixel', i.e. the location of the upper left grid point, i.e.:
@@ -134,3 +136,101 @@ DLL_EXPORT void grid_most_frequent_value(int *sorted_indices, int *values, int *
     free(count);
 }
 
+/* MASK based raster filters*/
+
+DLL_EXPORT void masked_mean_filter(float *dem, float *out, char *mask, int filter_rad, int nrows, int ncols){
+	/*consider what to do about nd_vals - should probably be handled by caller */
+	int i,j,i1,i2,j1,j2,m,n,ind1,ind2,used;
+	double v;
+	for(i=0 ; i<nrows ; i++){
+		for(j=0; j<ncols ; j++){
+			ind1=i*ncols+j;
+			if (!mask[ind1])
+				continue;
+			used=0;
+			i1=MAX((i-filter_rad),0);
+			i2=MIN((i+filter_rad),(nrows-1));
+			j1=MAX((j-filter_rad),0);
+			j2=MIN((j+filter_rad),(ncols-1));
+			used=0;
+			v=0.0;
+			for(m=i1; m<=i2; m++){
+				for(n=j1; n<=j2; n++){
+					ind2=m*ncols+n;
+					if (mask[ind2]){
+						used++;
+						v+=(double) dem[ind2];
+					}
+				}
+			}
+			/*must be at least one used - well check anyways!*/
+			if (used>0)
+				out[ind1]=(float) (v/used);
+		}
+	}
+}	
+
+/* Wander around along a water mask and expand flood cells - we can make "channels" along large triangles by setting dem-values low there...*/
+DLL_EXPORT int flood_cells(float *dem, float cut_off, char *mask, char *mask_out, int nrows, int ncols){
+	int i,j,m,n,i1,j1,n_set=0;
+	float v,w;
+	size_t ind1,ind2;
+	for(i=0; i<nrows; i++){
+		for(j=0; j<ncols; j++){
+			ind1=i*ncols+j;
+			if (mask[ind1]){
+				/* a window value of one will ensure connectedness*/
+				v=dem[ind1];
+				for(m=-1; m<=1; m++){
+					for(n=-1;n<=1; n++){
+						if ((m+n)!=1 && (m+n)!=-1)
+							continue;
+						i1=(i+n);
+						j1=(j+m);
+						if (i1<0 || i1>(nrows-1) || j1<0 || j1>(ncols-1))
+							continue;
+						ind2=i1*ncols+j1;
+						w=dem[ind2];
+						
+						if ((w-v)<=cut_off && !mask[ind2]){
+							mask_out[ind2]=1;
+							n_set++;
+						}
+					}
+				}
+			}
+		}
+	}
+	return n_set;
+}
+
+
+/* Fill gaps in order to connect close components*/
+DLL_EXPORT void binary_fill_gaps(char *M, char *out, int nrows, int ncols){
+	int i,j;
+	size_t ind;
+	for (i=0; i<nrows; i++){
+		for(j=0; j<ncols; j++){
+			ind=i*ncols+j;
+			out[ind]=M[ind];
+			if (M[ind])
+				continue;
+			if (j>0 && j<(ncols-1) && M[ind-1] && M[ind+1]){
+				out[ind]=1;
+				continue;
+			}
+			if (i>0 && i<(nrows-1) && M[ind-ncols] && M[ind+ncols]){
+				out[ind]=1;
+				continue;
+			}
+			if (i==0 || i==(nrows-1) || j==0 || j==(ncols-1))
+				continue;
+			if ((M[ind-ncols-1] && M[ind+ncols+1]) || (M[ind-ncols+1] && M[ind+ncols-1])){ /* ul && lr or  ur && ll*/
+				out[ind-1]=1;
+				out[ind]=1;
+				out[ind+1]=1;
+			}
+			
+		}
+	}
+}

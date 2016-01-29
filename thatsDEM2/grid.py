@@ -30,6 +30,8 @@ LIBDIR = os.path.realpath(os.path.join(os.path.dirname(__file__), "..", "lib"))
 LIBNAME = "libgrid"
 XY_TYPE = np.ctypeslib.ndpointer(dtype=np.float64, flags=['C', 'O', 'A', 'W'])
 GRID_TYPE = np.ctypeslib.ndpointer(dtype=np.float64, ndim=2, flags=['C', 'O', 'A', 'W'])
+GRID32_TYPE = np.ctypeslib.ndpointer(dtype=np.float32, ndim=2, flags=['C', 'O', 'A', 'W'])
+MASK2D_TYPE = np.ctypeslib.ndpointer(dtype=np.bool, ndim=2, flags=['C', 'O', 'A', 'W'])
 Z_TYPE = np.ctypeslib.ndpointer(dtype=np.float64, ndim=1, flags=['C', 'O', 'A', 'W'])
 UINT32_TYPE = np.ctypeslib.ndpointer(dtype=np.uint32, ndim=1, flags=['C', 'O', 'A', 'W'])
 INT32_GRID_TYPE = np.ctypeslib.ndpointer(dtype=np.int32, ndim=2, flags=['C', 'O', 'A', 'W'])
@@ -39,6 +41,7 @@ GEO_REF_ARRAY = ctypes.c_double * 4
 lib = np.ctypeslib.load_library(LIBNAME, LIBDIR)
 # void wrap_bilin(double *grid, double *xy, double *out, double *geo_ref,
 # double nd_val, int nrows, int ncols, int npoints)
+
 lib.wrap_bilin.argtypes = [
     GRID_TYPE,
     XY_TYPE,
@@ -75,8 +78,22 @@ lib.grid_most_frequent_value.argtypes = [
     ctypes.c_int]
 lib.grid_most_frequent_value.restype = None
 
-# If there's no natural nodata value connected to the grid, it is up to the user to supply a nd_val which is not a regular grid value.
-# If supplied geo_ref should be a 'sequence' of len 4 (duck typing here...)
+
+# int flood_cells(float *dem, float cut_off, char *mask, char *mask_out,
+# int nrows, int ncols)
+lib.flood_cells.argtypes = [GRID32_TYPE, ctypes.c_float,
+                            MASK2D_TYPE, MASK2D_TYPE] + [ctypes.c_int] * 2
+lib.flood_cells.restype = ctypes.c_int
+# void masked_mean_filter(float *dem, float *out, char *mask, int
+# filter_rad, int nrows, int ncols)
+lib.masked_mean_filter.argtypes = [
+    GRID32_TYPE, GRID32_TYPE, MASK2D_TYPE] + [ctypes.c_int] * 3
+
+lib.masked_mean_filter.restype = None
+
+lib.binary_fill_gaps.argtypes = [MASK2D_TYPE,
+                                 MASK2D_TYPE, ctypes.c_int, ctypes.c_int]
+lib.binary_fill_gaps.restype = None
 
 # COMPRESSION OPTIONS FOR SAVING GRIDS AS GTIFF
 DCO = ["TILED=YES", "COMPRESS=LZW"]
@@ -128,6 +145,27 @@ def bilinear_interpolation(grid, xy, nd_val, geo_ref=None):
     out = np.zeros((xy.shape[0],), dtype=np.float64)
     lib.wrap_bilin(grid, xy, out, p_geo_ref, nd_val, grid.shape[0], grid.shape[1], xy.shape[0])
     return out
+
+
+def flood_cells(dem, cut_off, water_mask):
+    # experimental 'downhill' expansion of water cells
+    assert(water_mask.shape == dem.shape)
+    out = np.copy(water_mask)
+    n = lib.flood_cells(dem, cut_off, water_mask, out,
+                        dem.shape[0], dem.shape[1])
+    return out, n
+
+
+def masked_mean_filter(dem, mask, rad=2):
+    """
+    Mean filter of a dem, using only values within mask and changing only values within mask.
+    """
+    assert(mask.shape == dem.shape)
+    assert(rad >= 1)
+    out = np.copy(dem)
+    lib.masked_mean_filter(dem, out, mask, rad, dem.shape[0], dem.shape[1])
+    return out
+
 
 
 def resample_grid(grid, nd_val, geo_ref_in, geo_ref_out, ncols_out, nrows_out):

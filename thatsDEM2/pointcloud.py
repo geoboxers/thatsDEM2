@@ -506,7 +506,7 @@ class Pointcloud(object):
         for a in self.attributes:
             pc.set_attribute(a, self.get_array(a)[mask])
         return pc
-
+    
     def sort_spatially(self, cs, shape=None, xy_ul=None, keep_sorting=False):
         """
         Primitive spatial sorting by creating a 'virtual' 2D grid covering the pointcloud
