@@ -37,6 +37,8 @@ UINT32_TYPE = np.ctypeslib.ndpointer(dtype=np.uint32, ndim=1, flags=['C', 'O', '
 INT32_GRID_TYPE = np.ctypeslib.ndpointer(dtype=np.int32, ndim=2, flags=['C', 'O', 'A', 'W'])
 INT32_TYPE = np.ctypeslib.ndpointer(dtype=np.int32, ndim=1, flags=['C', 'O', 'A', 'W'])
 LP_CDOUBLE = ctypes.POINTER(ctypes.c_double)
+LP_CULONG = ctypes.POINTER(ctypes.c_ulong)
+LP_CINT = ctypes.POINTER(ctypes.c_int)
 GEO_REF_ARRAY = ctypes.c_double * 4
 lib = np.ctypeslib.load_library(LIBNAME, LIBDIR)
 # void wrap_bilin(double *grid, double *xy, double *out, double *geo_ref,
@@ -94,6 +96,10 @@ lib.masked_mean_filter.restype = None
 lib.binary_fill_gaps.argtypes = [MASK2D_TYPE,
                                  MASK2D_TYPE, ctypes.c_int, ctypes.c_int]
 lib.binary_fill_gaps.restype = None
+
+# unsigned long walk_mask(char *M, int *start, int *end, int *path, unsigned long buf_size, int nrows, int ncols);
+lib.walk_mask.argtypes = [MASK2D_TYPE, INT32_TYPE, INT32_TYPE, INT32_GRID_TYPE, ctypes.c_ulong] + [ctypes.c_int] * 2
+lib.walk_mask.restype = ctypes.c_ulong;
 
 # COMPRESSION OPTIONS FOR SAVING GRIDS AS GTIFF
 DCO = ["TILED=YES", "COMPRESS=LZW"]
@@ -166,6 +172,17 @@ def masked_mean_filter(dem, mask, rad=2):
     lib.masked_mean_filter(dem, out, mask, rad, dem.shape[0], dem.shape[1])
     return out
 
+def walk_mask(M, start, end):
+    start = np.asarray(start, dtype=np.int32)
+    end = np.asarray(end, dtype=np.int32)
+    for pos in (start, end):
+        assert pos.size == 2
+        assert pos.max() < max(M.shape)
+        assert pos.min() >= 0
+        assert M[pos[0], pos[1]]
+    path = np.zeros((M.size, 2), dtype=np.int32)
+    path_size = lib.walk_mask(M, start, end, path, path.shape[0], M.shape[0], M.shape[1])
+    return path[:path_size]
 
 
 def resample_grid(grid, nd_val, geo_ref_in, geo_ref_out, ncols_out, nrows_out):

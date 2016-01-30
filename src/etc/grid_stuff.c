@@ -15,6 +15,7 @@
  * 
  */
 #include <stdlib.h>
+#include <stdio.h>
 #ifdef _MSC_VER
 #define DLL_EXPORT __declspec(dllexport)
 #else
@@ -204,6 +205,71 @@ DLL_EXPORT int flood_cells(float *dem, float cut_off, char *mask, char *mask_out
 	return n_set;
 }
 
+/* path finding in mask from start to end - if possible 
+ * will modify mask in place.
+ * will return number of vertices */
+DLL_EXPORT unsigned long walk_mask(char *M, int *start, int *end, int *path, unsigned long buf_size, int nrows, int ncols){
+    /* path must have allocated 2 * bufsize * sizeof(int) bytes */
+    /* will include rows like (i,j) */
+    int i, j, k1, k2, ni, nj, di, dj;
+    int steps[3] = {-1, 0 , 1}; 
+    unsigned long path_size = 0;
+    if (!M[start[0] * ncols + start[1]] || !M[end[0] * ncols + end[1]]){
+        fprintf(stderr, "walk_mask: endpoints not ok.");
+        return 0;
+    }
+    /* now walk*/
+    i = start[0];
+    j = start[1];
+    path[0] = i;
+    path[1] = j;
+    path_size = 1;
+    puts("lets go!");
+    while (path_size < buf_size && (i != end[0] || j != end[1])){
+        int found = 0;
+        /* remove current stepping stone*/
+        printf("Cur pos: (%d, %d)\n", i,j);
+        M[i * ncols + j] = 0;
+        /* search */
+        di = ( end[0] > i)? 2 : ((end[0] == i) ? 1 : 0 );
+        dj = ( end[1] > j)? 2 : ((end[1] == j) ? 1 : 0 );
+        printf("d: %d, %d\n", di -1, dj -1);
+        for(k1 = 0; k1 < 3 && !found; k1++){
+            ni = i + steps[(k1 + di) % 3];
+            if (ni < 0 || ni > (ncols -1))
+                continue;
+            for(k2 = 0; k2 < 3 && !found; k2++){
+                nj = j + steps[(k2 + dj) % 3];
+                /* current pos has been deleted so (0, 0) is not a valid step */
+                if (0 <= nj  && nj < ncols && M[ni * ncols + nj]){
+                    /* append next position*/
+                    j = nj;
+                    i = ni;
+                    path[2 * path_size] = i;
+                    path[2 * path_size + 1] = j;
+                    path_size++;
+                    found = 1;
+                }
+            } /* end col step */
+        }/* end row step*/
+        printf("Found: %d, psize: %lu, bufsize: %lu\n", found, path_size, buf_size);
+        printf("After: (%d, %d)\n", i, j);
+        if (!found){
+            puts("backwards");
+            if (path_size > 1){
+                /*try to rewind*/
+                path_size --;
+                i = path[2 * path_size];
+                j = path[2 * path_size + 1];
+            }
+            else{
+                break;
+            }
+        }
+    }
+    printf("Finally: (%d,%d), psize: %lu, bufsize: %lu\n", i, j, path_size, buf_size);
+    return (i == end[0] && j == end[1]) ? path_size : 0;  
+}
 
 /* Fill gaps in order to connect close components*/
 DLL_EXPORT void binary_fill_gaps(char *M, char *out, int nrows, int ncols){
