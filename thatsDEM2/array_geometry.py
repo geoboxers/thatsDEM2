@@ -18,7 +18,7 @@ import numpy as np
 from osgeo import ogr
 LIBDIR = os.path.realpath(os.path.join(os.path.dirname(__file__), "..", "lib"))
 LIBNAME = "libfgeom"
-XY_TYPE = np.ctypeslib.ndpointer(dtype=np.float64, flags=['C', 'O', 'A', 'W'])
+XY_TYPE = np.ctypeslib.ndpointer(dtype=np.float64, ndim=2, flags=['C', 'O', 'A', 'W'])
 GRID_TYPE = np.ctypeslib.ndpointer(
     dtype=np.float64, ndim=2, flags=['C', 'O', 'A', 'W'])
 Z_TYPE = np.ctypeslib.ndpointer(
@@ -92,7 +92,7 @@ lib.apply_filter.argtypes = (
     Z_TYPE,
     Z_TYPE,
     INT32_TYPE,
-    XY_TYPE,
+    Z_TYPE,
     ctypes.c_int,
     FILTER_FUNC_TYPE,
     ctypes.c_double,
@@ -123,6 +123,10 @@ lib.find_floating_voxels.argtypes = [
     INT32_VOXELS, INT32_VOXELS] + [ctypes.c_int] * 4
 lib.find_floating_voxels.restype = None
 
+# unsigned long simplify_linestring(double *xy_in, double *xy_out, double dist_tol, unsigned long n_pts)
+lib.simplify_linestring.argtypes = [XY_TYPE, XY_TYPE, ctypes.c_double, ctypes.c_ulong]
+lib.simplify_linestring.restype = ctypes.c_ulong
+
 # Names of defined filter functions
 LIBRARY_FILTERS = ("mean_filter",
                    "median_filter",
@@ -137,6 +141,7 @@ LIBRARY_FILTERS = ("mean_filter",
                    "spike_filter",
                    "ray_mean_dist_filter",
                    "mean_3d_filter")
+
 
 def apply_filter(along_xy, along_z,
                  pc_xy, pc_attr,
@@ -164,7 +169,7 @@ def apply_filter(along_xy, along_z,
     """
     out = np.zeros(along_xy.shape[0], dtype=np.float64)
     if callable(filter_func):
-        func =  FILTER_FUNC_TYPE(filter_func)
+        func = FILTER_FUNC_TYPE(filter_func)
     else:
         if not isinstance(filter_func, basestring):
             raise ValueError("filter_func must be a name (string) or a callable.")
@@ -187,9 +192,29 @@ def apply_filter(along_xy, along_z,
 
 
 def binary_fill_gaps(M):
+    """
+    Fill small gaps between elements in a binary mask
+    """
     N = np.zeros_like(M)
     lib.binary_fill_gaps(M, N, M.shape[0], M.shape[1])
     return N
+
+
+def simplify_linestring(xy, dtol):
+    """
+    Simplify a 2D-linestring (xy)
+    Args:
+        xy: numpy array of shape (n,2) and dtype float64
+        dtol: Distance tolerance.
+    Returns:
+        Simplified xy array.
+    """
+    if xy.shape[0] < 3:
+        return xy
+    xy_out = np.zeros_like(xy)
+    n_out = lib.simplify_linestring(xy, xy_out, dtol, xy.shape[0])
+    xy_out = np.resize(xy_out, (n_out, 2))
+    return xy_out
 
 
 def moving_bins(z, rad):
@@ -448,6 +473,72 @@ def linestring_displacements(xy):
         normals = np.vstack((normals, inner_normals))
     normals = np.vstack((normals, hat[-1]))
     return normals
+
+
+def project_onto_line(xy, x1, x2):
+    """Line coords between 0 and 1 will be in between x2 and x1"""
+    xy = np.atleast_2d(np.array(xy))
+    r = x2 - x1
+    n2 = r.dot(r)
+    line_coords = (xy - x1).dot(r) / n2
+    # return the internal 1d line coords and corresponding real xy coords
+    return line_coords, line_coords.reshape((xy.shape[0], 1)) * r.reshape((1, 2)) + x1.reshape((1, 2))
+
+
+
+def snap_to_polygon(xy_in, poly, dtol_v, dtol_bd=100):
+    """
+    Insert point(s) into a polygon [outer_ring, hole1, hole2...],
+    where distance to bd. is minimal.
+    Will 'snap' to an existing vertex if distance is less than dtol.
+    Modifies polygon in-place if successful.
+    Args:
+        xy_in: The input pt.
+        poly: 2D numpy arrays [outer_ring, hole1, ...] as returned from ogrpoly2array.
+        dtol_v: The distance tolerance for snapping to a vertex.
+        dtol_bd: The distance tolerance for snapping to bd.
+    Returns:
+        index_to_ring, index_in_ring_to_inserted_pt.
+        Will return -1, -1 if distance tolerances are exceeded.
+    """
+    dmin = 1e10
+    dtol_v2 = dtol_v**2
+    dtol_bd2 = dtol_bd**2
+    ring_min = -1
+    imin = -1
+    for ir, ring in enumerate(poly):
+        d2 = ((ring - xy_in) **2).sum(axis=1)
+        i = np.argmin(d2)
+        if d2[i] < dtol_v2 and d2[i] < dmin:
+            dmin = d2[i]
+            ring_min = ir
+            imin = i
+    if ring_min >= 0:
+        return ring_min, imin
+    # OK - so no vertices found. Do it all again...
+    # TODO: check for the lc_used in order to not insert a double pt.
+    xy_insert = None
+    for ir, ring in enumerate(poly):
+        for i in range(ring.shape[0] - 1):
+            p1 = ring[i]
+            p2 = ring[i + 1]
+            lc, xy = project_onto_line(xy_in, p1, p2)
+            if 0<= lc[0] <= 1:
+                dist = (xy[0,0] - xy_in[0])**2 + (xy[0,1] - xy_in[1])**2
+                if dist < dtol_bd2:
+                    ring_min = ir
+                    imin = i +1
+                    dmin = dist
+                    xy_insert = xy[0]
+    if ring_min >= 0:
+        ring = poly[ring_min]
+        ring = np.vstack((ring[:imin], xy_insert, ring[imin:]))
+        poly[ring_min] = ring
+        
+    return ring_min, imin
+
+        
+        
 
 
 def unit_test(n=1000):

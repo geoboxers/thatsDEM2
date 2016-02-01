@@ -16,6 +16,7 @@
  */
 int p_in_poly(double *p_in, char *mout, double *verts, unsigned int np, unsigned int  *nv, unsigned int n_rings);
 void p_in_buf(double *p_in, char *mout, double *verts, unsigned long np, unsigned long nv, double d);
+unsigned long simplify_linestring(double *xy_in, double *xy_out, double dist_tol, unsigned long n_pts);
 void get_triangle_geometry(double *xy, double *z, int *triangles, float *out , int ntriangles);
 void get_normals(double *xy, double *z, int *triangles, double *out, int ntriangles);
 void fill_it_up(unsigned char *out, unsigned int *hmap, int rows, int cols, int stacks);

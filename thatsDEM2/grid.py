@@ -181,8 +181,9 @@ def walk_mask(M, start, end):
         assert pos.min() >= 0
         assert M[pos[0], pos[1]]
     path = np.zeros((M.size, 2), dtype=np.int32)
-    path_size = lib.walk_mask(M, start, end, path, path.shape[0], M.shape[0], M.shape[1])
-    return path[:path_size]
+    N = M.copy()
+    path_size = lib.walk_mask(N, start, end, path, path.shape[0], M.shape[0], M.shape[1])
+    return np.resize(path, (path_size, 2))
 
 
 def resample_grid(grid, nd_val, geo_ref_in, geo_ref_out, ncols_out, nrows_out):

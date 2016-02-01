@@ -16,6 +16,7 @@
  */
 #include <stdlib.h>
 #include <stdio.h>
+#include <string.h>
 #ifdef _MSC_VER
 #define DLL_EXPORT __declspec(dllexport)
 #else
@@ -23,6 +24,7 @@
 #endif
 #define MIN(x,y)  ((x<y) ? x:y)
 #define MAX(a,b) (a>b ? a: b)
+#define ABS(x) ((x) > 0 ? (x) : -(x))
 /*simple bilnear interpolation here:
 * If geo_ref is NULL, we assume that xy is already in array coordinates,
 * If geo_ref is NOT NULL it should be an array of len 4: x1,cx,y2,cy - with (x1,y2) being the center of the upper left 'pixel', i.e. the location of the upper left grid point, i.e.:
@@ -211,7 +213,7 @@ DLL_EXPORT int flood_cells(float *dem, float cut_off, char *mask, char *mask_out
 DLL_EXPORT unsigned long walk_mask(char *M, int *start, int *end, int *path, unsigned long buf_size, int nrows, int ncols){
     /* path must have allocated 2 * bufsize * sizeof(int) bytes */
     /* will include rows like (i,j) */
-    int i, j, k1, k2, ni, nj, di, dj;
+    int i, j, k1, k2;
     int steps[3] = {-1, 0 , 1}; 
     unsigned long path_size = 0;
     if (!M[start[0] * ncols + start[1]] || !M[end[0] * ncols + end[1]]){
@@ -224,22 +226,24 @@ DLL_EXPORT unsigned long walk_mask(char *M, int *start, int *end, int *path, uns
     path[0] = i;
     path[1] = j;
     path_size = 1;
-    puts("lets go!");
+    /*puts("lets go!");*/
     while (path_size < buf_size && (i != end[0] || j != end[1])){
-        int found = 0;
+        int found = 0, diri = 1, dirj = 1, ni, nj, di, dj;
         /* remove current stepping stone*/
-        printf("Cur pos: (%d, %d)\n", i,j);
+        /*printf("Cur pos: (%d, %d)\n", i,j);*/
         M[i * ncols + j] = 0;
         /* search */
         di = ( end[0] > i)? 2 : ((end[0] == i) ? 1 : 0 );
         dj = ( end[1] > j)? 2 : ((end[1] == j) ? 1 : 0 );
-        printf("d: %d, %d\n", di -1, dj -1);
+        diri = (di == 2) ? -1 : 1;
+        dirj = (dj == 2) ? -1 : 1; 
+        /*printf("d: %d, %d\n", di -1, dj -1);*/
         for(k1 = 0; k1 < 3 && !found; k1++){
-            ni = i + steps[(k1 + di) % 3];
+            ni = i + steps[(diri*k1 + di) % 3];
             if (ni < 0 || ni > (ncols -1))
                 continue;
             for(k2 = 0; k2 < 3 && !found; k2++){
-                nj = j + steps[(k2 + dj) % 3];
+                nj = j + steps[(dirj*k2 + dj) % 3];
                 /* current pos has been deleted so (0, 0) is not a valid step */
                 if (0 <= nj  && nj < ncols && M[ni * ncols + nj]){
                     /* append next position*/
@@ -252,10 +256,10 @@ DLL_EXPORT unsigned long walk_mask(char *M, int *start, int *end, int *path, uns
                 }
             } /* end col step */
         }/* end row step*/
-        printf("Found: %d, psize: %lu, bufsize: %lu\n", found, path_size, buf_size);
-        printf("After: (%d, %d)\n", i, j);
+        /*printf("Found: %d, psize: %lu, bufsize: %lu\n", found, path_size, buf_size);*/
+        /*printf("After: (%d, %d)\n", i, j);*/
         if (!found){
-            puts("backwards");
+            /*puts("backwards");*/
             if (path_size > 1){
                 /*try to rewind*/
                 path_size --;
@@ -267,8 +271,35 @@ DLL_EXPORT unsigned long walk_mask(char *M, int *start, int *end, int *path, uns
             }
         }
     }
-    printf("Finally: (%d,%d), psize: %lu, bufsize: %lu\n", i, j, path_size, buf_size);
-    return (i == end[0] && j == end[1]) ? path_size : 0;  
+    /*printf("Finally: (%d,%d), psize: %lu, bufsize: %lu\n", i, j, path_size, buf_size);*/
+    if (i != end[0] || j != end[1]){
+        path_size = 0;
+    }
+    else if (path_size > 2){
+        int *new_path;
+        unsigned long new_path_size = 0, pos1 = 0, pos2 = 0;
+        new_path = malloc(sizeof(int) * 2 * path_size);
+        if (!new_path){
+            fprintf(stderr, "walk_mask: Allocation error.");
+            return path_size;
+        }
+        while( pos1 < path_size){
+            /*append*/
+            memcpy(new_path + 2 * new_path_size, path + 2 * pos1, 2 * sizeof(int));
+            new_path_size++;
+            for(pos2 = path_size -1; pos2 > pos1; pos2--){
+                if (ABS(path[2 * pos1] - path[2 * pos2]) < 2 && ABS(path[2 * pos1 + 1] - path[2 * pos2 +1]) < 2){
+                    pos1 = pos2 -1;
+                    break;
+                }
+            }
+            pos1++;
+        }
+        memcpy(path, new_path, 2 * new_path_size * sizeof(int));
+        path_size = new_path_size;
+        free(new_path); 
+    }
+    return path_size;  
 }
 
 /* Fill gaps in order to connect close components*/

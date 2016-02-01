@@ -121,6 +121,7 @@ int p_in_poly(double *p_in, char *mout, double *verts, unsigned int np, unsigned
 
 /*returns squared distance*/
 static double d_p_line(double *p1,double *p2, double *p3){
+    /* p1 is the point, p2, p3 - the line*/
 	double p[2],v[2],dot1,dot2;
 	p[0]=p1[0]-p2[0];
 	p[1]=p1[1]-p2[1];
@@ -165,6 +166,36 @@ void p_in_buf(double *p_in, char *mout, double *verts, unsigned long np, unsigne
 	for(i=0; i< np; i++)
 		mout[i]=(d_p_line_string(p_in+2*i,verts,nv)<d2) ? 1 :0;
 	return;
+}
+
+
+unsigned long simplify_linestring(double *xy_in, double *xy_out, double dist_tol, unsigned long n_pts){
+    /* simplify a linestring. xy_in and and xy_out must be of size 2*n_pts doubles */
+    /* will return the number of output pts. */
+    unsigned long pos1=0, pos2, pos3, new_size=0;
+    double *p1, *p2, *p3, dtol2, dmax;
+    dtol2 = SQUARE(dist_tol);
+    while (pos1 < n_pts){
+        p1 = xy_in + 2*pos1;
+        xy_out[2*new_size] = *p1;
+        xy_out[2*new_size + 1] = *(p1 + 1);
+        new_size++;
+        for(pos2 = n_pts -1; pos2 > pos1 +1; pos2--){
+            dmax = 0;
+            p2 = xy_in + 2*pos2;
+            for(pos3 = pos1 +1; pos3 < pos2 && dmax <= dist_tol;  pos3++){
+                p3 = xy_in + 2*pos3;
+                dmax = MAX(d_p_line(p3, p1, p2), dmax);
+            }
+            if (dmax < dtol2){
+                pos1 = pos2-1;
+                break;
+            }
+            
+        }
+        pos1++;
+    }
+    return new_size;
 }
 
 
