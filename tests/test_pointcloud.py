@@ -79,8 +79,8 @@ class TestPointcloud(unittest.TestCase):
 
     def test_cut_pointcloud(self):
         LOG.info("Testing cut poincloud")
-        pc = pointcloud.Pointcloud(np.ones((5, 2)), np.ones(
-            5), some_attr=np.ones(5), some_other=np.ones(5))
+        pc = pointcloud.Pointcloud(np.ones((5, 2)), np.ones(5), 
+                                   some_attr=np.ones(5), some_other=np.ones(5))
         M = np.array([1, 0, 1, 1, 0]).astype(np.bool)
         pc = pc.cut(M)
         self.assertEqual(pc.size, M.sum())
@@ -100,6 +100,15 @@ class TestPointcloud(unittest.TestCase):
                                         2, 2, 3], some_attr=np.ones(3))
         pc2 = pc.cut_to_class(3).cut_to_box(-10, -10, 10, 10).cut_to_class(3)
         self.assertEqual(pc2.size, 1)
+    
+    def test_pointcloud_conversion(self):
+        LOG.info("Testing pointcloud conversion")
+        pc = pointcloud.Pointcloud(np.ones((5, 2)), np.ones(5), 
+                                   c=np.ones(5, dtype=np.uint8))
+        lpc1 = pc.astype(pointcloud.LidarPointcloud)
+        lpc2 = lpc1.cut_to_class(1)
+        self.assertEqual(lpc1.size, lpc2.size)
+        
 
     def test_sort_pointcloud(self):
         LOG.info("Test pointcloud sorting")
@@ -114,8 +123,8 @@ class TestPointcloud(unittest.TestCase):
 
     def test_pointcloud_might_overlap(self):
         LOG.info("Test pointcloud sorting")
-        pc1 = pointcloud.from_array(np.ones((10, 10)), [0, 1, 0, 10, 0, -1])
-        pc2 = pointcloud.from_array(np.ones((10, 10)), [0, 1, 0, 5, 0, -1])
+        pc1 = pointcloud.Pointcloud.from_array(np.ones((10, 10)), [0, 1, 0, 10, 0, -1])
+        pc2 = pointcloud.Pointcloud.from_array(np.ones((10, 10)), [0, 1, 0, 5, 0, -1])
         self.assertTrue(pc1.might_overlap(pc2))
         pc1.affine_transformation_2d(T=(30, 30))
         self.assertFalse(pc1.might_overlap(pc2))
@@ -142,7 +151,7 @@ class TestPointcloud(unittest.TestCase):
 
     def _test_pointcloud_grid_filter(self, method, mean_val):
         LOG.info("Test pointcloud gridding, method: %s" % str(method))
-        pc = pointcloud.from_array(
+        pc = pointcloud.Pointcloud.from_array(
             np.arange(100).reshape((10, 10)), [0, 1, 0, 10, 0, -1])
         pc.sort_spatially(2)
         g = pc.get_grid(ncols=10, nrows=10, x1=0, x2=10, y1=0,
@@ -170,7 +179,7 @@ class TestPointcloud(unittest.TestCase):
 
     def test_pointcloud_grid_cellcount(self):
         LOG.info("Test pointcloud gridding, method: cellcount")
-        pc = pointcloud.from_array(
+        pc = pointcloud.Pointcloud.from_array(
             np.arange(100).reshape((10, 10)), [0, 1, 0, 10, 0, -1])
         g = pc.get_grid(ncols=10, nrows=10, x1=0, x2=10, y1=0,
                         y2=10, srad=2, method="cellcount")
@@ -178,7 +187,7 @@ class TestPointcloud(unittest.TestCase):
 
     def test_pointcloud_grid_density_filter(self):
         LOG.info("Test pointcloud gridding, method: density_filter")
-        pc = pointcloud.from_array(
+        pc = pointcloud.Pointcloud.from_array(
             np.arange(100).reshape((10, 10)), [0, 1, 0, 10, 0, -1])
         pc.sort_spatially(2)
         g = pc.get_grid(ncols=10, nrows=10, x1=0, x2=10, y1=0,
@@ -190,7 +199,7 @@ class TestPointcloud(unittest.TestCase):
 
     def test_pointcloud_grid_by_function(self):
         LOG.info("Test pointcloud gridding, method: np.max")
-        pc = pointcloud.from_array(
+        pc = pointcloud.Pointcloud.from_array(
             np.arange(100).reshape((10, 10)), [0, 1, 0, 10, 0, -1])
         g = pc.get_grid(ncols=2, nrows=2, x1=0, x2=10,
                         y1=0, y2=10, method=np.max)
@@ -198,7 +207,7 @@ class TestPointcloud(unittest.TestCase):
 
     def test_pointcloud_grid_most_frequent(self):
         LOG.info("Test pointcloud gridding, method: most_frequent")
-        pc = pointcloud.from_array(np.ones((10, 10)), [0, 1, 0, 10, 0, -1])
+        pc = pointcloud.Pointcloud.from_array(np.ones((10, 10)), [0, 1, 0, 10, 0, -1])
         c = (np.arange(100) % 10).astype(np.int32)
         pc.set_attribute("c", c)
         g = pc.get_grid(ncols=2, nrows=2, x1=0, x2=10, y1=0,
@@ -207,7 +216,7 @@ class TestPointcloud(unittest.TestCase):
 
     def test_pointcloud_TIN(self):
         LOG.info("Test pointcloud gridding, method: triangulation")
-        pc = pointcloud.from_array(np.ones((10, 10)), [0, 1, 0, 10, 0, -1])
+        pc = pointcloud.Pointcloud.from_array(np.ones((10, 10)), [0, 1, 0, 10, 0, -1])
         pc.triangulate()
         c = np.ones(100) * 5.0
         pc.set_attribute("c", c)
@@ -217,7 +226,7 @@ class TestPointcloud(unittest.TestCase):
 
     def test_ballcount_filter(self):
         LOG.info("Test pointcloud ballcount filter")
-        pc = pointcloud.from_array(np.ones((10, 10)), [0, 1, 0, 10, 0, -1])
+        pc = pointcloud.Pointcloud.from_array(np.ones((10, 10)), [0, 1, 0, 10, 0, -1])
         pc.sort_spatially(2)
         n1 = pc.ballcount_filter(0.5)
         self.assertTrue((n1 == 1).all())
@@ -226,14 +235,14 @@ class TestPointcloud(unittest.TestCase):
 
     def test_nearest_filter(self):
         LOG.info("Test pointcloud nearest filter")
-        pc = pointcloud.from_array(np.ones((10, 10)), [0, 1, 0, 10, 0, -1])
+        pc = pointcloud.Pointcloud.from_array(np.ones((10, 10)), [0, 1, 0, 10, 0, -1])
         pc.sort_spatially(2)
         idx = pc.nearest_filter(2, xy=pc.xy + 0.25)
         self.assertTrue((idx == np.arange(0, 100)).all())
     
     def test_filter_with_less_input_points(self):
         LOG.info("Test pointcloud nearest filter")
-        pc = pointcloud.from_array(np.ones((10, 10)), [0, 1, 0, 10, 0, -1])
+        pc = pointcloud.Pointcloud.from_array(np.ones((10, 10)), [0, 1, 0, 10, 0, -1])
         pc.sort_spatially(2)
         xy = pc.xy[2] + np.random.rand(3,2)*0.25
         idx = pc.nearest_filter(1, xy=xy)
@@ -242,7 +251,7 @@ class TestPointcloud(unittest.TestCase):
     
     def test_filter_with_more_input_points(self):
         LOG.info("Test pointcloud nearest filter")
-        pc = pointcloud.from_array(np.ones((10, 10)), [0, 1, 0, 10, 0, -1])
+        pc = pointcloud.Pointcloud.from_array(np.ones((10, 10)), [0, 1, 0, 10, 0, -1])
         pc.sort_spatially(2)
         xy = pc.xy[2] + np.random.rand(400,2)*0.25
         idx = pc.nearest_filter(1, xy=xy)
@@ -251,7 +260,7 @@ class TestPointcloud(unittest.TestCase):
 
     def test_spike_filter(self):
         LOG.info("Test pointcloud spike filter")
-        pc = pointcloud.from_array(np.ones((2, 2)), [-0.5, 1, 0, 1.5, 0, -1])
+        pc = pointcloud.Pointcloud.from_array(np.ones((2, 2)), [-0.5, 1, 0, 1.5, 0, -1])
         pc.extend(pointcloud.Pointcloud([[0.5, 0.5]], (-5.0,)))
         pc.sort_spatially(2)
         vlim = (0.4) ** 2
@@ -273,7 +282,7 @@ class TestPointcloud(unittest.TestCase):
 
     def test_custom_filter(self):
         LOG.info("Test pointcloud custom filter")
-        pc = pointcloud.from_array(np.ones((10, 10)), [0, 1, 0, 10, 0, -1])
+        pc = pointcloud.Pointcloud.from_array(np.ones((10, 10)), [0, 1, 0, 10, 0, -1])
         c = np.ones(100) * 5.0
         pc.set_attribute("c", c)
         pc.sort_spatially(2)
@@ -282,7 +291,7 @@ class TestPointcloud(unittest.TestCase):
     
     def test_3dmean_filter(self):
         LOG.info("Test pointcloud custom filter")
-        pc = pointcloud.from_array(np.ones((10, 10)), [0, 1, 0, 10, 0, -1])
+        pc = pointcloud.Pointcloud.from_array(np.ones((10, 10)), [0, 1, 0, 10, 0, -1])
         c = np.ones(100) * 5.0
         pc.set_attribute("c", c)
         pc.sort_spatially(2)
@@ -298,19 +307,19 @@ class TestPointcloud(unittest.TestCase):
 
     def test_dump_npz(self):
         LOG.info("Test pointcloud dump_npz /from_npz")
-        pc = pointcloud.from_array(
+        pc = pointcloud.Pointcloud.from_array(
             np.arange(100).reshape((10, 10)), [0, 1, 0, 10, 0, -1])
         pc.set_attribute("a", np.arange(100))
         path = self._get_named_temp_file(".npz")
         pc.dump_npz(path)
-        pc_rest = pointcloud.from_npz(path)
+        pc_rest = pointcloud.Pointcloud.from_npz(path)
         self.assertTrue((pc_rest.xy == pc_rest.xy).all())
         self.assertTrue((pc_rest.a == pc.a).all())
         os.remove(path)
 
     def test_dump_ogr(self):
         LOG.info("Test pointcloud dump_ogr")
-        pc = pointcloud.from_array(
+        pc = pointcloud.Pointcloud.from_array(
             np.arange(100).reshape((10, 10)), [0, 1, 0, 10, 0, -1])
         pc.set_attribute("a", np.arange(100))
         path = self._get_named_temp_file(".geojson")
@@ -320,7 +329,7 @@ class TestPointcloud(unittest.TestCase):
             obj = json.load(f)
             self.assertTrue("features" in obj)
             self.assertEqual(len(obj["features"]), pc.size)
-        pc_restore = pointcloud.from_ogr(path)
+        pc_restore = pointcloud.Pointcloud.from_ogr(path)
         self.assertItemsEqual(pc.attributes, pc_restore.attributes)
         self.assertAlmostEqual(np.fabs(pc.xy - pc_restore.xy).max(), 0, 3)
         self.assertAlmostEqual(np.fabs(pc.z - pc_restore.z).max(), 0, 3)

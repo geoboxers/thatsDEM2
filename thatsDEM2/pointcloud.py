@@ -1,5 +1,5 @@
 # Original work Copyright (c) 2015, Danish Geodata Agency <gst@gst.dk>
-# Modified work Copyright (c) 2015, Geoboxers <info@geoboxers.com>
+# Modified work Copyright (c) 2015, 2016, Geoboxers <info@geoboxers.com>
 # Permission to use, copy, modify, and/or distribute this software for any
 # purpose with or without fee is hereby granted, provided that the above
 # copyright notice and this permission notice appear in all copies.
@@ -12,6 +12,7 @@
 # ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
 # OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 #
+
 ############################
 # Pointcloud utility class - wraps many useful methods
 # silyko, 2014 - 2016
@@ -47,158 +48,11 @@ class InvalidArrayError(Exception):
     pass
 
 
-def npytype2ogrtype(dtype):
-    """Impoverished mapping between numpy dtypes and OGR field types."""
-    if issubclass(dtype.type, np.float):
-        return ogr.OFTReal
-    elif issubclass(dtype.type, np.integer):
-        return ogr.OFTInteger
-    raise TypeError("dtype cannot be mapped to an OGR type.")
-
-
-def ogrtype2npytype(ogrtype):
-    """Impoverished mapping between OGR field types and numpy dtypes."""
-    if ogrtype == ogr.OFTReal:
-        return np.float64
-    elif ogrtype == ogr.OFTInteger:
-        return np.int32
-    raise TypeError("OGR type cannot be mapped to a numpy dtype.")
-
-
-def from_any(path, **kwargs):
-    """
-    Load a pointcloud from a range of 'formats'. The specific 'driver' to use is decided from the filename extension.
-    Can also handle remote files from s3 and http. Whether a file is remote is decided from the path prefix.
-    Args:
-        path: a 'connection string'
-        additional keyword arguments will be passed on to the specific format handler.
-    Returns:
-        A pointcloud.Pointcloud object
-    """
-    # TODO - handle keywords properly - all methods, except fromLAS, will only
-    # return xyz for now. Fix this...
-    b, ext = os.path.splitext(path)
-    # we could use /vsi<whatever> like GDAL to signal special handling -
-    # however keep it simple for now.
-    temp_file = None
-    if remote_files.is_remote(path):
-        temp_file = remote_files.get_local_file(path)
-        path = temp_file
-    try:
-        if ext == ".las" or ext == ".laz":
-            pc = from_las(path, **kwargs)
-        elif ext == ".npy":
-            pc = from_npy(path, **kwargs)
-        elif ext == ".txt":
-            pc = from_text(path, **kwargs)
-        elif ext == ".npz":
-            pc = from_npz(path, **kwargs)
-        elif ext == ".tif" or ext == ".tiff" or ext == ".asc":
-            pc = from_grid(path, **kwargs)
-        else:
-            pc = from_ogr(path, **kwargs)
-    finally:
-        if temp_file is not None and os.path.isfile(temp_file):
-            os.remove(temp_file)
-    return pc
-
-
-# read a las file and return a pointcloud - spatial selection by xy_box
-# (x1,y1,x2,y2) and / or z_box (z1,z2) and/or list of classes...
-def from_las(path, attrs=("c", "pid")):
-    """
-    Load a pointcloud from las / laz format via slash.LasFile.
-    Laz reading currently requires that laszip-cli is findable.
-    Args:
-        path: Path to las / laz file.
-        attrs: Sequence of attributes to include.
-               Must be subset of LidarPointcloud.LIDAR_ATTRS
-    Returns:
-        A pointcloud.Pointcloud object.
-    """
-    if not set(attrs).issubset(set(LidarPointcloud.LIDAR_ATTRS)):
-        raise ValueError(
-            "Only attrs defined in Pointcloud.LIDAR_ATTRS allowed here.")
-    if HAS_LASPY:
-        return from_laspy(path, attrs)
-    elif HAS_SLASH:
-        return from_slash(path, attrs)
-    else:
-        raise Exception("No las reader library available.")
-
-
-def from_slash(path, attrs=("c", "pid")):
-    """
-    Use slash to read las /laz from path.
-    Args:
-        path: path to las/laz file.
-        attrs: A subset of the short names in Pointcloud.LIDAR_ATTRS.
-    Returns:
-        a LidarPointcloud
-    """
-    plas = slash.LasFile(path)
-    r = plas.read_records(include_return_number=("rn" in attrs))
-    plas.close()
-    xy = r["xy"]
-    z = r["z"]
-    for a in r.keys():
-        if a in ("xy", "z") or r[a] is None:
-            del r[a]
-    return LidarPointcloud(xy, z, **r)
-
 # Translation of short lidar attr codes to laspy names
 LASPY_ATTRS = {"c": "raw_classification",
                "pid": "pt_src_id",
                "rn": "return_num",
-               "i": "intensity"
-               }
-
-
-def from_laspy(path, attrs=("c", "pid")):
-    """
-    Use laspy to read a las/laz file.
-    Args:
-        path: path to las/laz file.
-        attrs: A subset of the short names in Pointcloud.LIDAR_ATTRS.
-    Returns:
-        A LidarPointcloud
-    """
-    plas = laspy.file.File(path)
-    xy = np.column_stack((plas.x, plas.y))
-    plas_attrs = {a: getattr(plas, LASPY_ATTRS.get(a, a)) for a in attrs}
-    pc = LidarPointcloud(xy, plas.z, **plas_attrs)
-    plas.close()
-    return pc
-
-
-def from_npy(path, **kwargs):
-    """
-    Load a pointcloud from a platform independent numpy .npy file. Will only keep xyz.
-    Args:
-        path: path to .npy file.
-    Returns:
-        A pointcloud.Pointcloud object.
-    """
-    xyz = np.load(path)
-    return Pointcloud(xyz[:, 0:2], xyz[:, 2])
-
-
-def from_npz(path, **kwargs):
-    """
-    Load a pointcloud from a platform independent numpy .npz file.
-    Restoring attributes by keys is supported.
-    Args:
-        path: path to .npz file.
-    Returns:
-        A pointcloud.Pointcloud object.
-    """
-    npzfile = np.load(path)
-    assert "xy" in npzfile.files
-    assert "z" in npzfile.files
-    attrs = set(npzfile.files).difference({"xy", "z"})
-    pc = Pointcloud(npzfile["xy"], npzfile["z"], **
-                    {a: npzfile[a] for a in attrs})
-    return pc
+               "i": "intensity"}
 
 
 def mesh_as_points(shape, geo_ref):
@@ -217,115 +71,6 @@ def mesh_as_points(shape, geo_ref):
     assert(xy.shape[0] == shape[0] * shape[1])
     return xy
 
-
-def from_array(z, geo_ref, nd_val=None):
-    """
-    Construct a Pointcloud object corresponding to the cell centers of an in memory grid.
-    Args:
-        z: Numpy array of shape (nrows,ncols).
-        geo_ref: GDAL style georefence.
-        nd_val: No data value of grid. Cell centers with this value will be excluded.
-    Returns:
-        A pointcloud.Pointcloud object
-    """
-    xy = mesh_as_points(z.shape, geo_ref)
-    z = z.flatten()
-    if nd_val is not None:
-        M = (z != nd_val)
-        if not M.all():
-            xy = xy[M]
-            z = z[M]
-    return Pointcloud(xy, z)
-
-# make a (geometric) pointcloud from a grid
-
-
-def from_grid(path, **kwargs):
-    """
-    Construct a Pointcloud object corresponding to the cell centers of the first band of a GDAL loadable raster.
-    Args:
-        path: GDAL connection string.
-    Returns:
-        A pointcloud.Pointcloud object
-    """
-    ds = gdal.Open(path)
-    geo_ref = ds.GetGeoTransform()
-    nd_val = ds.GetRasterBand(1).GetNoDataValue()
-    z = ds.ReadAsArray().astype(np.float64)
-    ds = None
-    return from_array(z, geo_ref, nd_val)
-
-
-# make a (geometric) pointcloud from a (xyz) text file
-def from_text(path, delim=None, **kwargs):
-    """
-    Load a pointcloud (xyz) from a delimited text file.
-    Args:
-        path: path to file.
-        delim: Delimiter, None corresponds to white space.
-    Returns:
-        A pointcloud.Pointcloud object containg only the raw x,y and z coords.
-    """
-    points = np.loadtxt(path, delimiter=delim)
-    if points.ndim == 1:  # Just a single point?
-        points = points.reshape((1, 3))
-    return Pointcloud(points[:, :2], points[:, 2])
-
-# make a (geometric) pointcloud form an OGR readable point datasource.
-# TODO: handle multipoint features....
-
-
-def from_ogr(cstr, layername=None, layersql=None, extent=None):
-    """
-    Load a pointcloud from an OGR 3D-point datasource (only geometries).
-    Args:
-        path:  OGR connection string.
-        layername: name of layer to load. Use either layername or layersql.
-        layersql: sql command to execute to fetch geometries. Use either layername or layersql.
-        extent: Extent to filter the result set by.
-    Returns:
-        A pointcloud.Pointcloud object containg only the raw x,y and z coords.
-    """
-    ds, layer = vector_io.open(cstr, layername, layersql, extent)
-    layer_defn = layer.GetLayerDefn()
-    geom_type = layer.GetGeomType()
-    assert geom_type in [ogr.wkbPoint, ogr.wkbPoint25D]
-    # Determine what attributes to keep...
-    attr_types = {}
-    for field in range(layer_defn.GetFieldCount()):
-        field_defn = layer_defn.GetFieldDefn(field)
-        name = field_defn.GetName()
-        ogr_type = field_defn.GetType()
-        try:
-            dtype = ogrtype2npytype(ogr_type)
-        except Exception, e:
-            continue
-        attr_types[name] = dtype
-    attrs = {name: [] for name in attr_types}
-    xy = []
-    z = []
-    # Now do the long loop over features
-    for feat in layer:
-        geom = feat.GetGeometryRef()
-        xy.append(geom.GetPoint_2D(0))
-        for a in attrs:
-            attrs[a].append(feat[a])
-        if geom.GetCoordinateDimension() == 3:
-            z.append(geom.GetZ(0))
-    if not z:
-        assert "z" in attrs
-        z = attrs.pop("z")
-    if layersql:
-        ds.ReleaseResultSet(layer)
-    layer = None
-    ds = None
-    # not to double up memory consumption - make conversion here, rather
-    # than in the pointlcoud constructor
-    xy = np.asarray(xy, dtype=np.float64)
-    z = np.asarray(z, dtype=np.float64)
-    for a in attrs:
-        attrs[a] = np.asarray(attrs[a], dtype=attr_types[a])
-    return Pointcloud(xy, z, **attrs)
 
 
 def empty_like(pc):
@@ -387,6 +132,24 @@ class Pointcloud(object):
     def __getitem__(self, i):
         """Return a dict with values at a specific index"""
         return {a: self.get_array(a)[i] for a in self.__pc_attrs}
+
+    def astype(self, subclass):
+        """
+        Return data as a subclass.
+        subclass must be a subclass of Pointcloud.
+        """
+        if not issubclass(subclass, Pointcloud):
+            raise ValueError("Not a Pointcloud subclass")
+        new_instance = subclass(self.xy, self.z)
+        for a in self.attributes:
+            new_instance.set_attribute(a, self.get_array(a))
+        return new_instance
+
+    def copy(self):
+        """
+        Return a copy of self as a new instance.
+        """
+        return self.astype(self.__class__)
 
     @property
     def attributes(self):
@@ -506,7 +269,7 @@ class Pointcloud(object):
         for a in self.attributes:
             pc.set_attribute(a, self.get_array(a)[mask])
         return pc
-    
+
     def sort_spatially(self, cs, shape=None, xy_ul=None, keep_sorting=False):
         """
         Primitive spatial sorting by creating a 'virtual' 2D grid covering the pointcloud
@@ -1040,7 +803,7 @@ class Pointcloud(object):
             try:
                 t = layer_defn.GetFieldDefn(
                     layer_defn.GetFieldIndex(a)).GetType()
-                assert t == npytype2ogrtype(self.get_array(a).dtype)
+                assert t == vector_io.npytype2ogrtype(self.get_array(a).dtype)
             except Exception as e:
                 raise TypeError("Layer does not seem to have a proper field corresponding to '%s'" % a +
                                 "\n" + str(e))
@@ -1060,7 +823,7 @@ class Pointcloud(object):
     def dump_new_ogr_layer(self, ds, layername="pointcloud", srs=None):
         geom_type = ogr.wkbPoint25D
         layer = ds.CreateLayer(layername, srs, geom_type)
-        field_list = [(a, npytype2ogrtype(self.get_array(a).dtype))
+        field_list = [(a, vector_io.npytype2ogrtype(self.get_array(a).dtype))
                       for a in self.attributes]
         for field_name, field_type in field_list:
             field_defn = ogr.FieldDefn(field_name, field_type)
@@ -1098,6 +861,243 @@ class Pointcloud(object):
                                          for a in self.__pc_attrs})
         else:
             np.savez(path, **{a: self.get_array(a) for a in self.__pc_attrs})
+    
+    # Class constructers
+    @classmethod
+    def from_npz(cls, path, attrs=None, **kwargs):
+        """
+        Load a pointcloud from a platform independent numpy .npz file.
+        Restoring attributes by keys is supported.
+        Args:
+            path: path to .npz file.
+            attrs: A set of attrs to return, or None - meaning all attrs.
+        Returns:
+            A Pointcloud - or subclass - object 
+        """
+        npzfile = np.load(path)
+        assert "xy" in npzfile.files
+        assert "z" in npzfile.files
+        _attrs = set(npzfile.files).difference({"xy", "z"})
+        if attrs is not None:
+            _attrs = _attrs.intersection(attrs)
+        pc = cls(npzfile["xy"], npzfile["z"], **{a: npzfile[a] for a in _attrs})
+        return pc
+
+    @classmethod
+    def from_npy(cls, path, **kwargs):
+        """
+        Load a pointcloud from a platform independent numpy .npy file. Will only keep xyz.
+        Args:
+            path: path to .npy file.
+        Returns:
+            A Pointcloud - or subclass - object.
+        """
+        xyz = np.load(path)
+        return cls(xyz[:, 0:2], xyz[:, 2])
+
+    # make a pointcloud form an OGR readable point datasource.
+    # TODO: handle multipoint features....
+    @classmethod
+    def from_ogr(cls, cstr, layername=None, layersql=None, extent=None, **kwargs):
+        """
+        Load a pointcloud from an OGR 3D-point datasource.
+        Args:
+            path:  OGR connection string.
+            layername: name of layer to load. Use either layername or layersql.
+            layersql: sql command to execute to fetch geometries. Use either layername or layersql.
+            extent: Extent to filter the result set by.
+        Returns:
+            A Pointcloud - or subclass - object
+        """
+        ds, layer = vector_io.open(cstr, layername, layersql, extent)
+        layer_defn = layer.GetLayerDefn()
+        geom_type = layer.GetGeomType()
+        assert geom_type in [ogr.wkbPoint, ogr.wkbPoint25D]
+        # Determine what attributes to keep...
+        attr_types = {}
+        for field in range(layer_defn.GetFieldCount()):
+            field_defn = layer_defn.GetFieldDefn(field)
+            name = field_defn.GetName()
+            ogr_type = field_defn.GetType()
+            try:
+                dtype = vector_io.ogrtype2npytype(ogr_type)
+            except Exception:
+                continue
+            attr_types[name] = dtype
+        attrs = {name: [] for name in attr_types}
+        xy = []
+        z = []
+        # Now do the long loop over features
+        for feat in layer:
+            geom = feat.GetGeometryRef()
+            xy.append(geom.GetPoint_2D(0))
+            for a in attrs:
+                attrs[a].append(feat[a])
+            if geom.GetCoordinateDimension() == 3:
+                z.append(geom.GetZ(0))
+        if not z:
+            assert "z" in attrs
+            z = attrs.pop("z")
+        if layersql:
+            ds.ReleaseResultSet(layer)
+        layer = None
+        ds = None
+        # not to double up memory consumption - make conversion here, rather
+        # than in the pointlcoud constructor
+        xy = np.asarray(xy, dtype=np.float64)
+        z = np.asarray(z, dtype=np.float64)
+        for a in attrs:
+            attrs[a] = np.asarray(attrs[a], dtype=attr_types[a])
+        return cls(xy, z, **attrs)
+
+    # make a (geometric) pointcloud from a (xyz) text file
+    @classmethod
+    def from_text(cls, path, delim=None, **kwargs):
+        """
+        Load a pointcloud (xyz) from a delimited text file.
+        Args:
+            path: path to file.
+            delim: Delimiter, None corresponds to white space.
+        Returns:
+            A pointcloud.Pointcloud object containg only the raw x,y and z coords.
+        """
+        points = np.loadtxt(path, delimiter=delim)
+        if points.ndim == 1:  # Just a single point?
+            points = points.reshape((1, 3))
+        return cls(points[:, :2], points[:, 2])
+
+    @classmethod
+    def from_array(cls, z, geo_ref, nd_val=None):
+        """
+        Construct a Pointcloud object corresponding to the cell centers of an in memory grid.
+        Args:
+            z: Numpy array of shape (nrows,ncols).
+            geo_ref: GDAL style georefence.
+            nd_val: No data value of grid. Cell centers with this value will be excluded.
+        Returns:
+            A Pointcloud -or subclass- object
+        """
+        xy = mesh_as_points(z.shape, geo_ref)
+        z = z.flatten()
+        if nd_val is not None:
+            M = (z != nd_val)
+            if not M.all():
+                xy = xy[M]
+                z = z[M]
+        return cls(xy, z)
+
+    @classmethod
+    def from_grid(cls, path, **kwargs):
+        """
+        Construct a Pointcloud object corresponding to the cell centers of the first band of a GDAL loadable raster.
+        Args:
+            path: GDAL connection string.
+        Returns:
+            A Pointcloud -or subclass- object
+        """
+        ds = gdal.Open(path)
+        geo_ref = ds.GetGeoTransform()
+        nd_val = ds.GetRasterBand(1).GetNoDataValue()
+        z = ds.ReadAsArray().astype(np.float64)
+        ds = None
+        return cls.from_array(z, geo_ref, nd_val)
+
+    @classmethod
+    def from_any(cls, path, **kwargs):
+        """
+        Load a pointcloud from a range of 'formats'. The specific 'driver' to use is decided from the filename extension.
+        Can also handle remote files from s3 and http. Whether a file is remote is decided from the path prefix.
+        Args:
+            path: a 'connection string'
+            additional keyword arguments will be passed on to the specific format handler.
+        Returns:
+            A Pointcloud - or subclass - object
+        """
+        # TODO - handle keywords properly - all methods, except fromLAS, will only
+        # return xyz for now. Fix this...
+        b, ext = os.path.splitext(path)
+        # we could use /vsi<whatever> like GDAL to signal special handling -
+        # however keep it simple for now.
+        temp_file = None
+        if remote_files.is_remote(path):
+            temp_file = remote_files.get_local_file(path)
+            path = temp_file
+        try:
+            if ext == ".las" or ext == ".laz":
+                pc = cls.from_las(path, **kwargs)
+            elif ext == ".npy":
+                pc = cls.from_npy(path, **kwargs)
+            elif ext == ".txt":
+                pc = cls.from_text(path, **kwargs)
+            elif ext == ".npz":
+                pc = cls.from_npz(path, **kwargs)
+            elif ext == ".tif" or ext == ".tiff" or ext == ".asc":
+                pc = cls.from_grid(path, **kwargs)
+            else:
+                pc = cls.from_ogr(path, **kwargs)
+        finally:
+            if temp_file is not None and os.path.isfile(temp_file):
+                os.remove(temp_file)
+        return pc
+
+    @classmethod
+    def from_las(cls, path, attrs=("c", "pid"), **kwargs):
+        """
+        Load a pointcloud from las / laz format via slash.LasFile.
+        Laz reading currently requires that laszip-cli is findable.
+        Args:
+            path: Path to las / laz file.
+            attrs: Sequence of attributes to include.
+                   Must be subset of LidarPointcloud.LIDAR_ATTRS
+        Returns:
+            A Pointcloud - or subclass - object.
+        """
+        if not set(attrs).issubset(set(LidarPointcloud.LIDAR_ATTRS)):
+            raise ValueError(
+                "Only attrs defined in Pointcloud.LIDAR_ATTRS allowed here.")
+        if HAS_LASPY:
+            return cls.from_laspy(path, attrs, **kwargs)
+        elif HAS_SLASH:
+            return cls.from_slash(path, attrs, **kwargs)
+        else:
+            raise Exception("No las reader library available.")
+
+    @classmethod
+    def from_slash(cls, path, attrs=("c", "pid"), **kwargs):
+        """
+        Use slash to read las /laz from path.
+        Args:
+            path: path to las/laz file.
+            attrs: A subset of the short names in Pointcloud.LIDAR_ATTRS.
+        Returns:
+            a LidarPointcloud
+        """
+        plas = slash.LasFile(path)
+        r = plas.read_records(include_return_number=("rn" in attrs))
+        plas.close()
+        xy = r["xy"]
+        z = r["z"]
+        for a in r.keys():
+            if a in ("xy", "z") or r[a] is None:
+                del r[a]
+        return cls(xy, z, **r)
+
+    @classmethod    
+    def from_laspy(cls, path, attrs=("c", "pid"), **kwargs):
+        """
+        Use laspy to read a las/laz file.
+        Args:
+            path: path to las/laz file.
+            attrs: A subset of the short names in Pointcloud.LIDAR_ATTRS.
+        Returns:
+            A LidarPointcloud
+        """
+        plas = laspy.file.File(path)
+        xy = np.column_stack((plas.x, plas.y))
+        plas_attrs = {a: getattr(plas, LASPY_ATTRS.get(a, a)) for a in attrs}
+        pc = cls(xy, plas.z, **plas_attrs)
+        plas.close()
+        return pc
 
     # Filterering methods below...
 
@@ -1115,12 +1115,12 @@ class Pointcloud(object):
         self.validate_filter_args(filter_rad)
         vals = np.require(self.get_array(attr), dtype=np.float64)
         out = array_geometry.apply_filter(xy, z, self.xy, vals,
-                                                 self.spatial_index, self.index_header,
-                                                 filter_func, filter_rad, nd_val, params)
+                                          self.spatial_index, self.index_header,
+                                          filter_func, filter_rad, nd_val, params)
         return out
-                         
+
     def apply_2d_filter(self, filter_rad, filter_func, xy=None,
-                          nd_val=-9999, attr="z", params=None):
+                        nd_val=-9999, attr="z", params=None):
         """Apply a 2d filter along supplied xy or self.xy.
         Args:
             filter_rad: filter radius (less than sorting cell size).
@@ -1137,7 +1137,7 @@ class Pointcloud(object):
         return self.apply_filter(filter_rad, filter_func, xy, None, nd_val, attr, params)
 
     def apply_3d_filter(self, filter_rad, filter_func, xy=None, z=None,
-                          nd_val=-9999, params=None):
+                        nd_val=-9999, params=None):
         """Apply a 3d filter along supplied xy and z or self.xy, self.z.
         3d filters are geometric in the sense, that pointcloud z must be supplied.
         Filtering of another value (besides z) can be implemented
@@ -1158,7 +1158,7 @@ class Pointcloud(object):
             xy = self.xy
             z = self.z
         return self.apply_filter(filter_rad, filter_func, xy, z, nd_val, "z", params)
-    
+
     # '2.5D' filters
     def min_filter(self, filter_rad, xy=None, nd_val=-9999, attr="z"):
         """

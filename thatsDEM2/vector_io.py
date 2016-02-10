@@ -1,5 +1,5 @@
 # Original work Copyright (c) 2015, Danish Geodata Agency <gst@gst.dk>
-# Modified work Copyright (c) 2015, Geoboxers <info@geoboxers.com>
+# Modified work Copyright (c) 2015 - 2016, Geoboxers <info@geoboxers.com>
 #
 # Permission to use, copy, modify, and/or distribute this software for any
 # purpose with or without fee is hereby granted, provided that the above
@@ -85,6 +85,24 @@ def nptype2gdal(dtype):
     elif dtype == np.bool or dtype == np.uint8:
         return gdal.GDT_Byte
     return gdal.GDT_Float64
+
+
+def npytype2ogrtype(dtype):
+    """Impoverished mapping between numpy dtypes and OGR field types."""
+    if issubclass(dtype.type, np.float):
+        return ogr.OFTReal
+    elif issubclass(dtype.type, np.integer):
+        return ogr.OFTInteger
+    raise TypeError("dtype cannot be mapped to an OGR type.")
+
+
+def ogrtype2npytype(ogrtype):
+    """Impoverished mapping between OGR field types and numpy dtypes."""
+    if ogrtype == ogr.OFTReal:
+        return np.float64
+    elif ogrtype == ogr.OFTInteger:
+        return np.int32
+    raise TypeError("OGR type cannot be mapped to a numpy dtype.")
 
 
 def get_extent(georef, shape):
@@ -314,4 +332,3 @@ def polygonize(M, georef, srs=None):
     gdal.Polygonize(mask_ds.GetRasterBand(1), mask_ds.GetRasterBand(1), lyr, dst_field)
     lyr.ResetReading()
     return ds, lyr
-

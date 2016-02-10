@@ -213,7 +213,7 @@ def simplify_linestring(xy, dtol):
         return xy
     xy_out = np.zeros_like(xy)
     n_out = lib.simplify_linestring(xy, xy_out, dtol, xy.shape[0])
-    xy_out = np.resize(xy_out, (n_out, 2))
+    xy_out = xy_out[:n_out].copy()
     return xy_out
 
 
@@ -319,6 +319,24 @@ def ogrline2array(ogr_line, flatten=True):
         arr = arr[:, 0:2].copy()
     return arr
 
+
+def area_of_ring(xy):
+    """Get the area of a closed ring"""
+    # Should be a closed ring
+    assert (xy[0] == xy[-1]).all()
+    a = 0
+    for i in range(xy.shape[0] -1):
+        a += np.linalg.det(xy[i:i+2])*0.5
+    return abs(a)
+
+
+def area_of_polygon(rings):
+    """Get the area of a polygon == list of numpy arrays"""
+    a = area_of_ring(rings[0])
+    if len(rings) > 1:
+        for ring in rings[1:]:
+            a -= area_of_ring(ring)
+    return a
 
 def points_in_buffer(points, vertices, dist):
     """
@@ -498,8 +516,8 @@ def snap_to_polygon(xy_in, poly, dtol_v, dtol_bd=100):
         dtol_v: The distance tolerance for snapping to a vertex.
         dtol_bd: The distance tolerance for snapping to bd.
     Returns:
-        index_to_ring, index_in_ring_to_inserted_pt.
-        Will return -1, -1 if distance tolerances are exceeded.
+        index_to_ring, index_in_ring_to_inserted_pt, has_snapped_to_vertex
+        Will return -1, -1, False if distance tolerances are exceeded.
     """
     dmin = 1e10
     dtol_v2 = dtol_v**2
@@ -514,7 +532,7 @@ def snap_to_polygon(xy_in, poly, dtol_v, dtol_bd=100):
             ring_min = ir
             imin = i
     if ring_min >= 0:
-        return ring_min, imin
+        return ring_min, imin, True
     # OK - so no vertices found. Do it all again...
     # TODO: check for the lc_used in order to not insert a double pt.
     xy_insert = None
@@ -525,7 +543,7 @@ def snap_to_polygon(xy_in, poly, dtol_v, dtol_bd=100):
             lc, xy = project_onto_line(xy_in, p1, p2)
             if 0<= lc[0] <= 1:
                 dist = (xy[0,0] - xy_in[0])**2 + (xy[0,1] - xy_in[1])**2
-                if dist < dtol_bd2:
+                if dist < dtol_bd2 and dist < dmin:
                     ring_min = ir
                     imin = i +1
                     dmin = dist
@@ -535,7 +553,7 @@ def snap_to_polygon(xy_in, poly, dtol_v, dtol_bd=100):
         ring = np.vstack((ring[:imin], xy_insert, ring[imin:]))
         poly[ring_min] = ring
         
-    return ring_min, imin
+    return ring_min, imin, False
 
         
         
