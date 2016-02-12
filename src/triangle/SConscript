@@ -2,10 +2,6 @@
 Import("env", "IS_WIN", "TRIANGLE_DIR")
 cloned_env = env.Clone()
 SRC_INDEX = ["_tri.c","trig_index.c"]
-DEF_INDEX="libtripy.def"
-cloned_env = env.Clone()
-if IS_WIN:
-    SRC_INDEX.append(DEF_INDEX)
 cloned_env.Append(LIBPATH=[TRIANGLE_DIR])
 cloned_env.Append(CPPPATH=[TRIANGLE_DIR])
 libtripy = cloned_env.SharedLibrary(target=env["libtripy"], source=SRC_INDEX, LIBS=[env["libtri"]])

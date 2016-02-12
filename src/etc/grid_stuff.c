@@ -18,8 +18,8 @@
 #include <stdio.h>
 #include <string.h>
 #include "grid_stuff.h"
-#define MIN(x,y)  ((x<y) ? x:y)
-#define MAX(a,b) (a>b ? a: b)
+#define MIN(x,y)  ((x) < (y) ? (x) : (y))
+#define MAX(x,y) ((x) > (y) ? (x) : (y))
 #define ABS(x) ((x) < 0 ? -(x) : (x))
 /*simple bilnear interpolation here:
 * If geo_ref is NULL, we assume that xy is already in array coordinates,
