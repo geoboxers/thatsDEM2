@@ -38,13 +38,22 @@ Have you ever wanted to convert a laz file to a sqlite db?
 ```python
 from thatsDEM2 import pointcloud
 # requires laspy or slash
-pc = pointcloud.from_las("/data/lidar.laz", attrs=("c","pid","i"))
+pc = pointcloud.LidarPointcloud.from_las("/data/lidar.laz", attrs=("c","pid","i"))
 # It's gonna be a little slow... but works
 pc.dump_new_ogr_datasource("db.sqlite", "SQLITE")
 # This should be faster
 pc.dump_npz("myfile.npz", compressed=True)
 # Load back again from the db - with som sql:
-pc = pointcloud.from_ogr("db.sqlite", layersql="select * from pointcloud where c=2")
+pc = pointcloud.LidarPointcloud.from_ogr("db.sqlite", layersql="select * from pointcloud where c=2")
 ```
 
-
+### Another example ###
+```python
+pc1.triangulate() # will use triangle
+g1 = pc1.get_grid(ncols=1000, nrows=1000, method="triangulation")
+pc2 = pc1.copy()
+pc2.sort_spatially(2)
+g2 = pc2.get_grid(ncols=1000, nrows=1000, method="idw_filter")
+h2 = g2.get_hillshade()
+h2.save("hillshade.tif", dco=["TILED=YES", "COMPRESS=LZW"])
+```
