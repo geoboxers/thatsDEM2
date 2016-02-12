@@ -19,7 +19,8 @@ if int(ARGUMENTS.get("debug", 0)):
 else:
     env.Append(CCFLAGS=["-O3"])
 env.Append(CCFLAGS=["-Wall","-pedantic"])
-
+# Append a define to fix exporting functions in msvc
+env.Append(CPPDEFINES=["_EXPORTING"])
 # Specify librarynames - must match those specified in thatsDEM
 env["libtri"] = "triangle"
 env["libtripy"] = "tripy"

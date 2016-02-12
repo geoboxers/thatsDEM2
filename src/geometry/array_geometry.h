@@ -14,16 +14,21 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  * 
  */
-int p_in_poly(double *p_in, char *mout, double *verts, unsigned int np, unsigned int  *nv, unsigned int n_rings);
-void p_in_buf(double *p_in, char *mout, double *verts, unsigned long np, unsigned long nv, double d);
-unsigned long simplify_linestring(double *xy_in, double *xy_out, double dist_tol, unsigned long n_pts);
-void get_triangle_geometry(double *xy, double *z, int *triangles, float *out , int ntriangles);
-void get_normals(double *xy, double *z, int *triangles, double *out, int ntriangles);
-void fill_it_up(unsigned char *out, unsigned int *hmap, int rows, int cols, int stacks);
-void find_floating_voxels(int *lab,  int *out, int gcomp, int rows, int cols, int stacks);
-int fill_spatial_index(int *sorted_flat_indices, int *index, int npoints, int max_index);
-typedef double(*FILTER_FUNC)(double *, double , int*, double* , double* , double, double, void*);
-void apply_filter(double *xy, 
+#if defined(_MSC_VER) && defined(_EXPORTING)
+#define DLL_EXPORT __declspec(dllexport)
+#else
+#define DLL_EXPORT  
+#endif
+DLL_EXPORT int p_in_poly(double *p_in, char *mout, double *verts, unsigned int np, unsigned int  *nv, unsigned int n_rings);
+DLL_EXPORT void p_in_buf(double *p_in, char *mout, double *verts, unsigned long np, unsigned long nv, double d);
+DLL_EXPORT unsigned long simplify_linestring(double *xy_in, double *xy_out, double dist_tol, unsigned long n_pts);
+DLL_EXPORT void get_triangle_geometry(double *xy, double *z, int *triangles, float *out , int ntriangles);
+DLL_EXPORT void get_normals(double *xy, double *z, int *triangles, double *out, int ntriangles);
+DLL_EXPORT void fill_it_up(unsigned char *out, unsigned int *hmap, int rows, int cols, int stacks);
+DLL_EXPORT void find_floating_voxels(int *lab,  int *out, int gcomp, int rows, int cols, int stacks);
+DLL_EXPORT int fill_spatial_index(int *sorted_flat_indices, int *index, int npoints, int max_index);
+DLL_EXPORT typedef double(*FILTER_FUNC)(double *, double , int*, double* , double* , double, double, void*);
+DLL_EXPORT void apply_filter(double *xy, 
                   double *z, 
                   double *pc_xy, 
                   double *pc_z, 
@@ -37,20 +42,20 @@ void apply_filter(double *xy,
                   void *opt_params);
                   
 /* declare all the builtin filter functions*/
-double min_filter(double *, double, int *, double *, double *, double, double, void *);
-double max_filter(double *, double, int *, double *, double *, double, double, void *);
-double var_filter(double *, double, int *, double *, double *, double, double, void *);
-double mean_filter(double *, double, int *, double *, double *, double, double, void *);
-double median_filter(double *, double, int *, double *, double *, double, double, void *);
-double spike_filter(double *, double, int *, double *, double *, double, double, void *);
-double density_filter(double *, double, int *, double *, double *, double, double, void *);
-double distance_filter(double *, double, int *, double *, double *, double, double, void *);
-double nearest_filter(double *, double, int *, double *, double *, double, double, void *);
-double ballcount_filter(double *, double, int *, double *, double *, double, double, void *);
-double ray_mean_dist_filter(double *, double, int *, double *, double *, double, double, void *);
-double mean_3d_filter(double *, double, int *, double *, double *, double, double, void *);
-double idw_filter(double *, double, int *, double *, double *, double, double, void *);
+DLL_EXPORT double min_filter(double *, double, int *, double *, double *, double, double, void *);
+DLL_EXPORT double max_filter(double *, double, int *, double *, double *, double, double, void *);
+DLL_EXPORT double var_filter(double *, double, int *, double *, double *, double, double, void *);
+DLL_EXPORT double mean_filter(double *, double, int *, double *, double *, double, double, void *);
+DLL_EXPORT double median_filter(double *, double, int *, double *, double *, double, double, void *);
+DLL_EXPORT double spike_filter(double *, double, int *, double *, double *, double, double, void *);
+DLL_EXPORT double density_filter(double *, double, int *, double *, double *, double, double, void *);
+DLL_EXPORT double distance_filter(double *, double, int *, double *, double *, double, double, void *);
+DLL_EXPORT double nearest_filter(double *, double, int *, double *, double *, double, double, void *);
+DLL_EXPORT double ballcount_filter(double *, double, int *, double *, double *, double, double, void *);
+DLL_EXPORT double ray_mean_dist_filter(double *, double, int *, double *, double *, double, double, void *);
+DLL_EXPORT double mean_3d_filter(double *, double, int *, double *, double *, double, double, void *);
+DLL_EXPORT double idw_filter(double *, double, int *, double *, double *, double, double, void *);
 /* end filter functions */
 
-void moving_bins(double *z, int *nout, double rad, int n);
-void binary_fill_gaps(char *M, char *out, int nrows, int ncols);
+DLL_EXPORT void moving_bins(double *z, int *nout, double rad, int n);
+DLL_EXPORT void binary_fill_gaps(char *M, char *out, int nrows, int ncols);
