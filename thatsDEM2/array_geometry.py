@@ -325,8 +325,8 @@ def area_of_ring(xy):
     # Should be a closed ring
     assert (xy[0] == xy[-1]).all()
     a = 0
-    for i in range(xy.shape[0] -1):
-        a += np.linalg.det(xy[i:i+2])*0.5
+    for i in range(xy.shape[0] - 1):
+        a += np.linalg.det(xy[i:i + 2]) * 0.5
     return abs(a)
 
 
@@ -337,6 +337,7 @@ def area_of_polygon(rings):
         for ring in rings[1:]:
             a -= area_of_ring(ring)
     return a
+
 
 def points_in_buffer(points, vertices, dist):
     """
@@ -371,10 +372,10 @@ def get_triangle_geometry(xy, z, triangles, n_triangles):
 def get_normals(xy, z, triangles, n_triangles):
     """
     Compute normals vectors for a triangulation.
-     Args:
+    Args:
         xy: The vertices of the triangulation.
         z: The z values of the vertices.
-        triangles: ctypes pointer to a c-contiguous int array of triangles,
+        triangles: ctypes pointer to a c-contiguous int32 array of triangles,
                    where each row contains the indices of the three vertices of a triangle.
         n_triangles: The number of triangles (rows in triangle array== size /3)
     Returns:
@@ -383,6 +384,34 @@ def get_normals(xy, z, triangles, n_triangles):
     out = np.ones((n_triangles, 3), dtype=np.float64)
     lib.get_normals(xy, z, triangles, out, n_triangles)
     return out
+
+
+def get_curvatures(xyz, triangles):
+    """
+    Compute curvatures based on a (surface) triangulation.
+    TODO: speedier implementation in c - this is a toy test.
+    Args:
+        xyz: numpy array of vertices - shape (n, 3)
+        triangles: numpy integer array of triangles, shape(m, 3)
+    """
+    curvatures = np.zeros(xyz.shape[0], dtype=np.float64)
+    for i in range(xyz.shape[0]):
+        # iterate over first axis
+        I, J = np.where(triangles == i)
+        alpha = 0
+        for j in range(I.size):
+            trig = triangles[I[j]]
+            p0 = xyz[J[j]]
+            l1 = xyz[(J[j] + 1) % 3] - p0
+            l2 = xyz[(J[j] + 2) % 3] - p0
+            d1 = np.sqrt(l1.dot(l1))
+            d2 = np.sqrt(l2.dot(l2))
+            alpha += np.arccos(np.dot(l1, l2) / (d1 * d2))
+        curvatures[i] = 2 * np.pi - alpha
+    return curvatures
+        
+    
+    
 
 
 def get_bounds(geom):
@@ -554,9 +583,6 @@ def snap_to_polygon(xy_in, poly, dtol_v, dtol_bd=100):
         poly[ring_min] = ring
         
     return ring_min, imin, False
-
-        
-        
 
 
 def unit_test(n=1000):

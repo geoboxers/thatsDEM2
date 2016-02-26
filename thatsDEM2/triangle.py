@@ -387,7 +387,8 @@ class PolygonTriangulation(TriangulationBase):
             self.points=np.vstack((self.points,inner_xy))
         if add_segments is not None:
             self.segments = np.vstack((self.segments, add_segments))
-            assert self.segments.max() < self.points.shape[0]
+            if self.segments.max() >= self.points.shape[0]:
+                raise ValueError("segments-max: %d, points-shape: %d" % (self.segments.max(), self.points.shape[0]))
         self.segments = np.require(self.segments, dtype=np.int32, requirements=['A', 'O', 'C'])
         self.points = np.require(self.points, dtype=np.float64, requirements=['A', 'O', 'C'])
         self.holes = np.require(self.holes, dtype=np.float64, requirements=['A', 'O', 'C'])
@@ -406,14 +407,14 @@ class PolygonTriangulation(TriangulationBase):
             n_holes,
             ctypes.byref(nt))
         self.ntrig = nt.value
-        #self.index = lib.build_index(
-        #    self.points.ctypes.data_as(LP_CDOUBLE),
-        #    self.vertices,
-        #    cs,
-        #    self.points.shape[0],
-        #    self.ntrig)
-        #if self.index is None:
-        #    raise Exception("Failed to build index...")
+        self.index = lib.build_index(
+            self.points.ctypes.data_as(LP_CDOUBLE),
+            self.vertices,
+            cs,
+            self.points.shape[0],
+            self.ntrig)
+        if self.index is None:
+            raise Exception("Failed to build index...")
 
     def points_in_polygon(self, xy):
         # based on what the index cell size is, this can be really fast and very robust!
