@@ -409,9 +409,6 @@ def get_curvatures(xyz, triangles):
             alpha += np.arccos(np.dot(l1, l2) / (d1 * d2))
         curvatures[i] = 2 * np.pi - alpha
     return curvatures
-        
-    
-    
 
 
 def get_bounds(geom):
@@ -532,7 +529,6 @@ def project_onto_line(xy, x1, x2):
     return line_coords, line_coords.reshape((xy.shape[0], 1)) * r.reshape((1, 2)) + x1.reshape((1, 2))
 
 
-
 def snap_to_polygon(xy_in, poly, dtol_v, dtol_bd=100):
     """
     Insert point(s) into a polygon [outer_ring, hole1, hole2...],
@@ -549,12 +545,12 @@ def snap_to_polygon(xy_in, poly, dtol_v, dtol_bd=100):
         Will return -1, -1, False if distance tolerances are exceeded.
     """
     dmin = 1e10
-    dtol_v2 = dtol_v**2
-    dtol_bd2 = dtol_bd**2
+    dtol_v2 = dtol_v ** 2
+    dtol_bd2 = dtol_bd ** 2
     ring_min = -1
     imin = -1
     for ir, ring in enumerate(poly):
-        d2 = ((ring - xy_in) **2).sum(axis=1)
+        d2 = ((ring - xy_in) ** 2).sum(axis=1)
         i = np.argmin(d2)
         if d2[i] < dtol_v2 and d2[i] < dmin:
             dmin = d2[i]
@@ -570,18 +566,18 @@ def snap_to_polygon(xy_in, poly, dtol_v, dtol_bd=100):
             p1 = ring[i]
             p2 = ring[i + 1]
             lc, xy = project_onto_line(xy_in, p1, p2)
-            if 0<= lc[0] <= 1:
-                dist = (xy[0,0] - xy_in[0])**2 + (xy[0,1] - xy_in[1])**2
+            if 0 <= lc[0] <= 1:
+                dist = (xy[0, 0] - xy_in[0]) ** 2 + (xy[0, 1] - xy_in[1]) ** 2
                 if dist < dtol_bd2 and dist < dmin:
                     ring_min = ir
-                    imin = i +1
+                    imin = i + 1
                     dmin = dist
                     xy_insert = xy[0]
     if ring_min >= 0:
         ring = poly[ring_min]
         ring = np.vstack((ring[:imin], xy_insert, ring[imin:]))
         poly[ring_min] = ring
-        
+
     return ring_min, imin, False
 
 
