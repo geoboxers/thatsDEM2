@@ -341,63 +341,143 @@ class Triangulation(TriangulationBase):
         t2 = time.clock()
 
 
-class PolygonTriangulation(TriangulationBase):
-    """TriangulationBase implementation. Triangulate a polygon."""
-
-    def __init__(self,
-                 outer,
-                 holes=None,
-                 inner_xy=None,
-                 add_segments=None,
-                 cs=-1):  # low cs will speed up point in polygon
-        # breaklines must be segments of the form ((i1,i2),(i3, i4)),....)
-        # referring to pts in self.pts
-        # first element in arr_list is outer ring, rest is holes - GEOS rings tend
+class PolygonData(object):
+    """Helper class for handling data of a PSLG-triangulation"""
+    def __init__(self, rings, **attrs):
+        """
+        Args:
+            rings: list of numpy arrays (outer_ring, inner_ring1,...)
+            attrs: Attributes to store for each vertex (e.g. z)
+                   Eeach item must be a list of arrays of same shape as rings.
+        """
+        # first element in rings is outer ring, rest is holes - GEOS rings tend
         # to be closed,  we dont want that.
-        if (outer[0, :] == outer[-1, :]).all():
-            raise ValueError("Dont use closed rings here!")
-        self.points = outer.copy()
-        self.segments = np.zeros((self.points.shape[0], 2), dtype=np.int32)
-        self.segments[:, 0] = np.arange(0, self.points.shape[0])
-        self.segments[:-1, 1] = np.arange(1, self.points.shape[0])
-        self.segments[-1, 1] = 0
-        hole_centers = []
-        if holes is not None:
-            for arr in holes:
-                #modify in place
-                if (arr[0, :] == arr[-1, :]).all():
-                    raise ValueError("Dont use closed rings here!")
-                hole_centers.append(arr.mean(axis=0))
-                segments = np.zeros((arr.shape[0], 2), dtype=np.int32)
-                segments[:, 0] = np.arange(self.points.shape[0], self.points.shape[0] + arr.shape[0])
-                segments[:-1, 1] = np.arange(self.points.shape[0] + 1, self.points.shape[0] + arr.shape[0])
-                segments[-1, 1] = self.points.shape[0]
-                self.points = np.vstack((self.points, arr))
-                self.segments = np.vstack((self.segments, segments))
-            self.holes = np.asarray(hole_centers, dtype=np.float64)
-            assert(self.holes.shape == (len(holes), 2))
+        # attr is an attribute of vertices - like z.
+        self._points = np.empty((0, 2), dtype=np.float64)
+        self._ring_slices = []  # start index, stop_index in self.points for each ring
+        self._segments = np.empty((0, 2), dtype=np.int32)
+        self._holes = np.zeros((0, 2), dtype=np.float64)
+        self._inner_points = np.empty((0, 2), dtype=np.float64) # points not 'inner' segments
+        self._attrs = {a: np.empty(0, dtype=np.float64) for a in attrs}
+        self._inner_attrs = {a: np.empty(0, dtype=np.float64) for a in attrs}
+        for i, ring in enumerate(rings):
+            _attrs = {a: attrs[a][i] for a in attrs}
+            self._add_ring(rings[i], is_hole = (i > 0), **_attrs)
+        
+    def _add_ring(self, ring, is_hole=False, **attrs):
+        """Add some more holes / rings"""
+        if (ring[0, :] == ring[-1, :]).all():
+            # unclose
+            ring = ring[:-1]
+            for a in attrs:
+                attrs[a] = attrs[a][:-1]
+        if is_hole:
+            # add a hole center - assuming hole is convex!
+            self._holes = np.vstack((self._holes, ring.mean(axis=0)))
+        segments = np.zeros((ring.shape[0], 2), dtype=np.int32)
+        segments[:, 0] = np.arange(self._points.shape[0], self._points.shape[0] + ring.shape[0])
+        segments[:-1, 1] = np.arange(self._points.shape[0] + 1, self._points.shape[0] + ring.shape[0])
+        segments[-1, 1] = self._points.shape[0]
+        self._ring_slices.append((self._points.shape[0], self._points.shape[0] + ring.shape[0]))
+        self._points = np.vstack((self._points, ring))
+        for a in attrs:
+            self._attrs[a] = np.concatenate((self._attrs[a], attrs[a])) 
+        self._segments = np.vstack((self._segments, segments))
+
+    def add_holes(self, rings, **attrs):
+        # Add some more holes
+        if not set(attrs.keys()).issubset(set(self._attrs.keys())):
+            raise ValueError("Cannot create new attrs here.")
+        for i, ring in enumerate(rings):
+            _attrs = {a: attrs[a][i] for a in attrs}
+            self._add_ring(ring, is_hole=True, **_attrs)
+    
+    def add_points_and_segments(self, xy, segments, **attrs):
+        """Add some more points and segments."""
+        if not set(attrs.keys()).issubset(set(self._attrs.keys())):
+            raise ValueError("Cannot create new attrs here.")
+        
+        n = self._points.shape[0]
+        self._points = np.vstack((self._points, xy))
+        assert segments.max() < xy.shape[0]
+        assert segments.min() >= 0
+        self._segments = np.vstack((self._segments, segments + n))
+        for a in attrs:
+            self._attrs[a] = np.concatenate((self._attrs[a], attrs[a]))
+    
+    def add_inner_points(self, xy, **attrs):
+        """Add some points WITHOUT segments.
+        We might want to edit these later on, so handy too keep those seperate.
+        """
+        if not set(attrs.keys()).issubset(set(self._attrs.keys())):
+            raise ValueError("Cannot create new attrs here.")
+        self._inner_points = np.vstack((self._inner_points, xy))
+        for a in attrs:
+            self._inner_attrs[a] = np.concatenate((self._inner_attrs[a], attrs[a]))
+        
+        
+    @property
+    def inner_point_indices(self):
+        # Return indices of inner_points in self.points
+        return np.arange(self._points.shape[0], self._points.shape[0] + self._inner_points.shape[0])
+
+    @property
+    def n_inner_points(self):
+        return self._inner_points.shape[0]
+
+    @property
+    def points(self):
+        return np.vstack((self._points, self._inner_points))
+    
+    @property
+    def segments(self):
+        return self._segments
+    
+    @property
+    def holes(self):
+        return self._holes
+    
+    def get_ring(self, i):
+        # Return a view of the i'th ring
+        if i >= len(self._ring_slices):
+            raise ValueError("Too large index, not that many rings.")
+        i0, i1 = self._ring_slices[i]
+        return self._points[i0 : i1]
+    
+    def attribute(self, a):
+        # return a stacked attributte
+        return np.concatenate((self._attrs[a], self._inner_attrs[a]))
+    
+    def thin_inner_points(self, M):
+        # Mask M must be relative to self._inner_pts
+        self._inner_points = self._inner_points[M]
+        for a in self._inner_attrs:
+            if self._inner_attrs[a].shape[0] > 0:
+                self._inner_attrs[a] = self._inner_attrs[a][M]
+        
+
+        
+class PSLGTriangulation(TriangulationBase):
+    """TriangulationBase implementation. Triangulate a polygon / graph"""
+
+    def __init__(self, points, segments, hole_points=None, cs=-1):  # low cs will speed up point in polygon
+        self.segments = np.require(segments, dtype=np.int32, requirements=['A', 'O', 'C'])
+        self.points = np.require(points, dtype=np.float64, requirements=['A', 'O', 'C'])
+        if (hole_points is not None) and hole_points.shape[0] > 0:
+            self.holes = np.require(hole_points, dtype=np.float64, requirements=['A', 'O', 'C'])
+            assert self.holes.ndim == 2
             p_holes = self.holes.ctypes.data_as(LP_CDOUBLE)
-            n_holes = len(holes)
+            n_holes = self.holes.shape[0]
         else:
             self.holes = None
             p_holes = None
             n_holes = 0
-        
-        if inner_xy is not None:
-            self.points=np.vstack((self.points,inner_xy))
-        if add_segments is not None:
-            self.segments = np.vstack((self.segments, add_segments))
-            if self.segments.max() >= self.points.shape[0]:
-                raise ValueError("segments-max: %d, points-shape: %d" % (self.segments.max(), self.points.shape[0]))
-        self.segments = np.require(self.segments, dtype=np.int32, requirements=['A', 'O', 'C'])
-        self.points = np.require(self.points, dtype=np.float64, requirements=['A', 'O', 'C'])
-        self.holes = np.require(self.holes, dtype=np.float64, requirements=['A', 'O', 'C'])
+        assert self.points.ndim == 2
+        assert self.segments.ndim == 2
+        assert self.segments.max() < self.points.shape[0]
+        assert self.segments.min() >= 0
         nt = ctypes.c_int(0)
         # int *use_triangle_pslg(double *xy, int *segments, double *holes, int np, int nseg, int nholes, int *nt)
-        # print self.points
-        # print self.segments
-        # print self.holes
-        
         self.vertices = lib.use_triangle_pslg(
             self.points.ctypes.data_as(LP_CDOUBLE),
             self.segments.ctypes.data_as(LP_CINT),
@@ -415,26 +495,15 @@ class PolygonTriangulation(TriangulationBase):
             self.ntrig)
         if self.index is None:
             raise Exception("Failed to build index...")
-
+    
+    def inner_points(self):
+        # Return a mask indicating whether a point is not on a segment
+        M = np.ones(self.points.shape[0], dtype=np.bool)
+        M[self.segments[:, 0]] = 0
+        M[self.segments[:, 1]] = 0
+        return M
+    
     def points_in_polygon(self, xy):
         # based on what the index cell size is, this can be really fast and very robust!
         I = self.find_triangles(xy)
         return (I >= 0)
-
-
-def test_pslg():
-    import matplotlib
-    matplotlib.use("Qt4Agg")
-    import matplotlib.pyplot as plt
-    outer = np.asarray(((-1, -1), (1, -1), (1, 1), (-1, 1)), dtype=np.float64)
-    add_xy =np.random.rand(100,2)*3-(1,1)
-    hole = outer * 0.5
-    breakline = np.asarray(((-0.75,0.9),(-0.75,-0.9)))
-    tri = PolygonTriangulation(outer, [hole], inner_xy=add_xy, breaklines= breakline)
-    T = tri.get_triangles()
-    plt.figure()
-    plt.triplot(tri.points[:, 0], tri.points[:, 1], T)
-    plt.scatter(add_xy[:,0],add_xy[:,1])
-    plt.scatter(tri.points[:,0], tri.points[:,1], c="red")
-    plt.show()
-

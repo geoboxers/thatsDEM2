@@ -386,16 +386,23 @@ def get_normals(xy, z, triangles, n_triangles):
     return out
 
 
-def get_curvatures(xyz, triangles):
+def get_curvatures(xyz, triangles, inds=None):
     """
     Compute curvatures based on a (surface) triangulation.
     TODO: speedier implementation in c - this is a toy test.
     Args:
-        xyz: numpy array of vertices - shape (n, 3)
-        triangles: numpy integer array of triangles, shape(m, 3)
+        xyz: Numpy array of vertices - shape (n, 3)
+        triangles: Numpy integer array of triangles, shape(m, 3)
+        inds: Indices for pts. in xyz to do - defaults to all.
+    Return:
+        curvatures: Numpy array of curvatures in specified pts.
     """
-    curvatures = np.zeros(xyz.shape[0], dtype=np.float64)
-    for i in range(xyz.shape[0]):
+    
+    if inds is None:
+        inds = np.arange(0, xyz.shape[0])
+    curvatures = np.zeros(inds.shape[0], dtype=np.float64)
+    n = 0
+    for i in inds:
         # iterate over first axis
         I, J = np.where(triangles == i)
         alpha = 0
@@ -407,7 +414,8 @@ def get_curvatures(xyz, triangles):
             d1 = np.sqrt(l1.dot(l1))
             d2 = np.sqrt(l2.dot(l2))
             alpha += np.arccos(np.dot(l1, l2) / (d1 * d2))
-        curvatures[i] = 2 * np.pi - alpha
+        curvatures[n] = 2 * np.pi - alpha
+        n += 1
     return curvatures
 
 
