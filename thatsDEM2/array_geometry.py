@@ -408,9 +408,9 @@ def get_curvatures(xyz, triangles, inds=None):
         alpha = 0
         for j in range(I.size):
             trig = triangles[I[j]]
-            p0 = xyz[J[j]]
-            l1 = xyz[(J[j] + 1) % 3] - p0
-            l2 = xyz[(J[j] + 2) % 3] - p0
+            p0 = xyz[trig[J[j]]]
+            l1 = xyz[trig[(J[j] + 1) % 3]] - p0
+            l2 = xyz[trig[(J[j] + 2) % 3]] - p0
             d1 = np.sqrt(l1.dot(l1))
             d2 = np.sqrt(l2.dot(l2))
             alpha += np.arccos(np.dot(l1, l2) / (d1 * d2))
