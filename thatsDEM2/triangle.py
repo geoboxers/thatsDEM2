@@ -444,6 +444,9 @@ class PolygonData(object):
         i0, i1 = self._ring_slices[i]
         return self._points[i0 : i1]
     
+    def get_rings(self):
+        return [self._points[i0: i1] for i0, i1 in self._ring_slices]
+    
     def attribute(self, a):
         # return a stacked attributte
         return np.concatenate((self._attrs[a], self._inner_attrs[a]))
@@ -476,6 +479,7 @@ class PSLGTriangulation(TriangulationBase):
         assert self.segments.ndim == 2
         assert self.segments.max() < self.points.shape[0]
         assert self.segments.min() >= 0
+        assert points.shape[0] >= 3
         nt = ctypes.c_int(0)
         # int *use_triangle_pslg(double *xy, int *segments, double *holes, int np, int nseg, int nholes, int *nt)
         self.vertices = lib.use_triangle_pslg(

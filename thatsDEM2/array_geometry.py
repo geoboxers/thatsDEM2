@@ -200,6 +200,28 @@ def binary_fill_gaps(M):
     return N
 
 
+def line_intersection(p1, p2, p3, p4):
+    """
+    Test whether two lines in 2d p1 -> p2, and p3 -> p4 intersect.
+    Returns:
+       Intersection point if lines intersect, else None
+    """
+    v1 = p2 - p1
+    v2 = p3 - p4
+    v3 = p3 - p1
+    w = np.column_stack((v1, v2, v3))
+    D2 = np.linalg.det(w[:, (0, 1)])
+    if abs(D2) < 1e-10:
+        return None # TODO: fix here
+    D1 = np.linalg.det(w[:, (0, 2)])
+    D0 = np.linalg.det(w[:, (1, 2)])
+    s1 =  - D0 / D2
+    s2 = D1 / D2
+    if 0 <= s1 <= 1 and 0<= s2 <= 1:
+        return p1 + s1 * v1
+    return None
+    
+
 def simplify_linestring(xy, dtol):
     """
     Simplify a 2D-linestring (xy)
@@ -395,28 +417,41 @@ def get_curvatures(xyz, triangles, inds=None):
         triangles: Numpy integer array of triangles, shape(m, 3)
         inds: Indices for pts. in xyz to do - defaults to all.
     Return:
-        curvatures: Numpy array of curvatures in specified pts.
+        curvatures: Numpy array of curvatures in specified pts,
+        mean_slopes: Numpy array of mean (2d) slope in specified pts.
+
     """
     
     if inds is None:
         inds = np.arange(0, xyz.shape[0])
     curvatures = np.zeros(inds.shape[0], dtype=np.float64)
+    m_slopes = np.zeros(inds.shape[0], dtype=np.float64)
     n = 0
     for i in inds:
         # iterate over first axis
         I, J = np.where(triangles == i)
         alpha = 0
+        m_slope = 0
+        n_edges = 0
         for j in range(I.size):
             trig = triangles[I[j]]
             p0 = xyz[trig[J[j]]]
             l1 = xyz[trig[(J[j] + 1) % 3]] - p0
             l2 = xyz[trig[(J[j] + 2) % 3]] - p0
+            # slopes < 0 if cur pt is 'above' other
+            # mean slope < 0 means, we lie above a 'mean plane...'
+            # making z less, increases mean slope
+            m_slope += l1[2] / np.sqrt(l1.dot(l1)) 
+            m_slope += l2[2] / np.sqrt(l2.dot(l2))
+            n_edges += 2
             d1 = np.sqrt(l1.dot(l1))
             d2 = np.sqrt(l2.dot(l2))
             alpha += np.arccos(np.dot(l1, l2) / (d1 * d2))
         curvatures[n] = 2 * np.pi - alpha
+        if n_edges > 0:
+            m_slopes[n] = m_slope / n_edges
         n += 1
-    return curvatures
+    return curvatures, m_slopes
 
 
 def get_bounds(geom):
@@ -432,15 +467,21 @@ def get_bounds(geom):
     return bbox
 
 
-def points2ogr_polygon(points):
+def points2ogrpolygon(rings):
     """Construct a OGR polygon from an input point list (not closed)"""
     # input an iterable of 2d 'points', slow interface for large collections...
-    s = ogr.Geometry(ogr.wkbLineString)
-    for p in points:
-        s.AddPoint_2D(p[0], p[1])
-    s.AddPoint_2D(points[0][0], points[0][1])  # close
-    p = ogr.BuildPolygonFromEdges(ogr.ForceToMultiLineString(s))
-    return p
+    poly = ogr.Geometry(ogr.wkbPolygon)
+    if isinstance(rings, np.ndarray): # just one 'ring'
+        rings = [rings]
+    
+    for ring in rings:
+        ogr_ring = ogr.Geometry(ogr.wkbLinearRing)
+        for pt in ring:
+            ogr_ring.AddPoint(pt[0], pt[1])
+        ogr_ring.CloseRings()
+        poly.AddGeometry(ogr_ring)
+    return poly
+        
 
 
 def bbox_intersection(bbox1, bbox2):
