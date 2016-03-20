@@ -146,6 +146,7 @@ static double d_p_line(double *p1,double *p2, double *p3){
     return DOT(v,v);
     /*<x,v> v /<v,v> ,, |<x,v> v /<v,v>|^2 < <v,v> <-> <x,y> < <v,v> */
 }
+
 /*returns squared distance*/
 static double d_p_line_string(double *p, double *verts, unsigned long nv){
     unsigned long i;

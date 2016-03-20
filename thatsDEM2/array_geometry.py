@@ -212,15 +212,15 @@ def line_intersection(p1, p2, p3, p4):
     w = np.column_stack((v1, v2, v3))
     D2 = np.linalg.det(w[:, (0, 1)])
     if abs(D2) < 1e-10:
-        return None # TODO: fix here
+        return None  # TODO: fix here
     D1 = np.linalg.det(w[:, (0, 2)])
     D0 = np.linalg.det(w[:, (1, 2)])
-    s1 =  - D0 / D2
+    s1 = - D0 / D2
     s2 = D1 / D2
-    if 0 <= s1 <= 1 and 0<= s2 <= 1:
+    if 0 <= s1 <= 1 and 0 <= s2 <= 1:
         return p1 + s1 * v1
     return None
-    
+
 
 def simplify_linestring(xy, dtol):
     """
@@ -421,7 +421,7 @@ def get_curvatures(xyz, triangles, inds=None):
         mean_slopes: Numpy array of mean (2d) slope in specified pts.
 
     """
-    
+
     if inds is None:
         inds = np.arange(0, xyz.shape[0])
     curvatures = np.zeros(inds.shape[0], dtype=np.float64)
@@ -441,7 +441,7 @@ def get_curvatures(xyz, triangles, inds=None):
             # slopes < 0 if cur pt is 'above' other
             # mean slope < 0 means, we lie above a 'mean plane...'
             # making z less, increases mean slope
-            m_slope += l1[2] / np.sqrt(l1.dot(l1)) 
+            m_slope += l1[2] / np.sqrt(l1.dot(l1))
             m_slope += l2[2] / np.sqrt(l2.dot(l2))
             n_edges += 2
             d1 = np.sqrt(l1.dot(l1))
@@ -471,9 +471,9 @@ def points2ogrpolygon(rings):
     """Construct a OGR polygon from an input point list (not closed)"""
     # input an iterable of 2d 'points', slow interface for large collections...
     poly = ogr.Geometry(ogr.wkbPolygon)
-    if isinstance(rings, np.ndarray): # just one 'ring'
+    if isinstance(rings, np.ndarray):  # just one 'ring'
         rings = [rings]
-    
+
     for ring in rings:
         ogr_ring = ogr.Geometry(ogr.wkbLinearRing)
         for pt in ring:
@@ -481,7 +481,6 @@ def points2ogrpolygon(rings):
         ogr_ring.CloseRings()
         poly.AddGeometry(ogr_ring)
     return poly
-        
 
 
 def bbox_intersection(bbox1, bbox2):
@@ -500,7 +499,7 @@ def bbox_to_polygon(bbox):
     """Convert a box given as (xmin,ymin,xmax,ymax) to a OGR polygon geometry."""
     points = ((bbox[0], bbox[1]), (bbox[2], bbox[1]),
               (bbox[2], bbox[3]), (bbox[0], bbox[3]))
-    poly = points2ogr_polygon(points)
+    poly = points2ogrpolygon(points)
     return poly
 
 
@@ -576,6 +575,11 @@ def project_onto_line(xy, x1, x2):
     line_coords = (xy - x1).dot(r) / n2
     # return the internal 1d line coords and corresponding real xy coords
     return line_coords, line_coords.reshape((xy.shape[0], 1)) * r.reshape((1, 2)) + x1.reshape((1, 2))
+
+
+def distance_to_polygon(xy, rings):
+    """For each 2d-point in xy, calculate distance to polygon (list of Numpy arrays)."""
+    raise NotImplementedError()  # Use c-func
 
 
 def snap_to_polygon(xy_in, poly, dtol_v, dtol_bd=100):
