@@ -200,26 +200,30 @@ def binary_fill_gaps(M):
     return N
 
 
-def line_intersection(p1, p2, p3, p4):
+def line_intersection(l1, l2):
     """
-    Test whether two lines in 2d p1 -> p2, and p3 -> p4 intersect.
+    Test whether two lines l1, l2 in 2d intersect.
+    Args:
+        l1: Numpy array of shape (2, 2)
+        l2: Numpy array og shape (2, 2)
     Returns:
-       Intersection point if lines intersect, else None
+       Intersection point, lc1, lc2 (line coords) if lines are NOT colinear and intersect.
+       If no intersection (or colinear) return None, None, None
     """
-    v1 = p2 - p1
-    v2 = p3 - p4
-    v3 = p3 - p1
+    v1 = l1[1] - l1[0]
+    v2 = l2[0] - l2[1]
+    v3 = l2[0] - l1[0]
     w = np.column_stack((v1, v2, v3))
     D2 = np.linalg.det(w[:, (0, 1)])
     if abs(D2) < 1e-10:
-        return None  # TODO: fix here
+        return None, None, None  # TODO: fix here
     D1 = np.linalg.det(w[:, (0, 2)])
     D0 = np.linalg.det(w[:, (1, 2)])
     s1 = - D0 / D2
     s2 = D1 / D2
     if 0 <= s1 <= 1 and 0 <= s2 <= 1:
-        return p1 + s1 * v1
-    return None
+        return l1[0] + s1 * v1, s1 ,s2
+    return None, None, None
 
 
 def simplify_linestring(xy, dtol):
