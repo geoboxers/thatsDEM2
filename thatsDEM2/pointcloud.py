@@ -55,6 +55,21 @@ LASPY_ATTRS = {"c": "raw_classification",
                "i": "intensity"}
 
 
+def slice_array(arr, slicer=None):
+    """
+    Convenience method to slice an array,
+    without creating a view if slicer is None.
+    Args:
+        arr: Numpy array
+        slicer: fancy indexing 'slice' object (slice, mask, int array)
+    Returns:
+        Sliced array or original array if slicer is None.
+    """
+    if slicer is not None:
+        return arr[slicer]
+    return arr
+
+
 def mesh_as_points(shape, geo_ref):
     """
     Construct a mesh of xy coordinates corresponding to the cell centers of a grid.
@@ -70,7 +85,6 @@ def mesh_as_points(shape, geo_ref):
     xy = np.column_stack((x.flatten(), y.flatten()))
     assert(xy.shape[0] == shape[0] * shape[1])
     return xy
-
 
 
 def empty_like(pc):
@@ -861,7 +875,7 @@ class Pointcloud(object):
                                          for a in self.__pc_attrs})
         else:
             np.savez(path, **{a: self.get_array(a) for a in self.__pc_attrs})
-    
+
     # Class constructers
     @classmethod
     def from_npz(cls, path, attrs=None, **kwargs):
@@ -872,7 +886,7 @@ class Pointcloud(object):
             path: path to .npz file.
             attrs: A set of attrs to return, or None - meaning all attrs.
         Returns:
-            A Pointcloud - or subclass - object 
+            A Pointcloud - or subclass - object
         """
         npzfile = np.load(path)
         assert "xy" in npzfile.files
@@ -1005,7 +1019,8 @@ class Pointcloud(object):
     @classmethod
     def from_any(cls, path, **kwargs):
         """
-        Load a pointcloud from a range of 'formats'. The specific 'driver' to use is decided from the filename extension.
+        Load a pointcloud from a range of 'formats'.
+        The specific 'driver' to use is decided from the filename extension.
         Can also handle remote files from s3 and http. Whether a file is remote is decided from the path prefix.
         Args:
             path: a 'connection string'
@@ -1043,7 +1058,7 @@ class Pointcloud(object):
     @classmethod
     def from_las(cls, path, attrs=("c", "pid"), **kwargs):
         """
-        Load a pointcloud from las / laz format via slash.LasFile.
+        Load a pointcloud from las / laz format via laspy or slash.
         Laz reading currently requires that laszip-cli is findable.
         Args:
             path: Path to las / laz file.
@@ -1082,20 +1097,42 @@ class Pointcloud(object):
                 del r[a]
         return cls(xy, z, **r)
 
-    @classmethod    
-    def from_laspy(cls, path, attrs=("c", "pid"), **kwargs):
+    @classmethod
+    def from_laspy_object(cls, plas, attrs=("c", "pid"), slicer=None):
+        """
+        Use laspy to read a las/laz file.
+        Args:
+            plas: laspy.file.File object
+            attrs: A subset of the short names in Pointcloud.LIDAR_ATTRS.
+            slicer: A numpy fancy indexing 'object' (slice, mask, int array).
+        Returns:
+            A LidarPointcloud
+        """
+        # This should be the most memory friendly slicing method
+        # Generally all the fetched attrs should be views into a buffer (memmap or string)
+        # Additional memory consumption will only take place when converting to an array with 'own data'
+        x = slice_array(plas.X, slicer) * plas.header.scale[0] + plas.header.offset[0]
+        y = slice_array(plas.Y, slicer) * plas.header.scale[1] + plas.header.offset[1]
+        xy = np.column_stack((x, y))
+        del x, y
+        z = slice_array(plas.Z, slicer) * plas.header.scale[2] + plas.header.offset[2]
+        plas_attrs = {a: slice_array(getattr(plas, LASPY_ATTRS.get(a, a)), slicer) for a in attrs}
+        pc = cls(xy, z, **plas_attrs)
+        return pc
+
+    @classmethod
+    def from_laspy(cls, path, attrs=("c", "pid"), slicer=None, **kwargs):
         """
         Use laspy to read a las/laz file.
         Args:
             path: path to las/laz file.
             attrs: A subset of the short names in Pointcloud.LIDAR_ATTRS.
+            slicer: A numpy fancy indexing 'object' (slice, mask, int array).
         Returns:
             A LidarPointcloud
         """
         plas = laspy.file.File(path)
-        xy = np.column_stack((plas.x, plas.y))
-        plas_attrs = {a: getattr(plas, LASPY_ATTRS.get(a, a)) for a in attrs}
-        pc = cls(xy, plas.z, **plas_attrs)
+        pc = cls.from_laspy_object(plas, attrs, slicer)
         plas.close()
         return pc
 
