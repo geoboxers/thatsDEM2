@@ -1,5 +1,5 @@
 # Original work Copyright (c) 2015, Danish Geodata Agency <gst@gst.dk>
-# Modified work Copyright (c) 2015, Geoboxers <info@geoboxers.com>
+# Modified work Copyright (c) 2015-2016, Geoboxers <info@geoboxers.com>
 #
 # Permission to use, copy, modify, and/or distribute this software for any
 # purpose with or without fee is hereby granted, provided that the above
@@ -20,12 +20,14 @@ import numpy as np
 import os
 from osgeo import gdal
 import ctypes
+import logging
 try:
     import scipy.ndimage as image
 except:
     HAS_NDIMAGE = False
 else:
     HAS_NDIMAGE = True
+LOG = logging.getLogger(__name__)
 LIBDIR = os.path.realpath(os.path.join(os.path.dirname(__file__), "..", "lib"))
 LIBNAME = "libgrid"
 XY_TYPE = np.ctypeslib.ndpointer(dtype=np.float64, flags=['C', 'O', 'A', 'W'])
@@ -109,7 +111,7 @@ ZT_KERNEL = np.array([[0, 0, 0], [-1, 0, 1], [0, 0, 0]], dtype=np.float32)  # Ze
 H_KERNEL = np.array([[-1, 0, 1], [-2, 0, 2], [-1, 0, 1]], dtype=np.float32)  # Horn
 
 
-def fromGDAL(path, upcast=False):
+def from_gdal(path, upcast=False):
     """
     Open a 1-band grid from a GDAL datasource.
     Args:
@@ -450,7 +452,7 @@ class Grid(object):
         cell_georef = [self.geo_ref[0] + 0.5 * cx, cx, self.geo_ref[3] + 0.5 * cy, -cy]
         return bilinear_interpolation(self.grid, xy, nd_val, cell_georef)
 
-    def save(self, fname, format="GTiff", dco=[], colortable=None, srs=None):
+    def save(self, fname, format="GTiff", dco=None, colortable=None, srs=None):
         # TODO: map numpy types to gdal types better - done internally in gdal I think...
         if self.grid.dtype == np.float32:
             dtype = gdal.GDT_Float32
@@ -467,13 +469,13 @@ class Grid(object):
         if os.path.exists(fname):
             try:
                 driver.Delete(fname)
-            except Exception as msg:
-                print msg
+            except Exception as e:
+                LOG.error(str(e))
             else:
-                print("Overwriting %s..." % fname)
+                LOG.info("Overwriting %s..." % fname)
         else:
-            print("Saving %s..." % fname)
-        if len(dco) > 0:
+            LOG.info("Saving %s..." % fname)
+        if dco:
             dst_ds = driver.Create(fname, self.grid.shape[1], self.grid.shape[0], 1, dtype, options=dco)
         else:
             dst_ds = driver.Create(fname, self.grid.shape[1], self.grid.shape[0], 1, dtype)
@@ -522,7 +524,7 @@ class Grid(object):
         # less than zero means black, which here should translate to the value 1
         # as a ubyte.
         X = (-dx * light[0] - dy * light[1] + light[2]) / X
-        print X.min(), X.max()
+        # print X.min(), X.max()
         X[X < 0] = 0  # dark pixels should have value 1
         X = X * 254 + 1
         # should not happen
