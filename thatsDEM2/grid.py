@@ -18,7 +18,7 @@
 ####################################
 import numpy as np
 import os
-from osgeo import gdal
+from osgeo import gdal, osr
 import ctypes
 import logging
 try:
@@ -349,7 +349,7 @@ def intersect_grid_extents(georef1, shape1, georef2, shape2):
 
 class Grid(object):
     """
-    Grid abstraction class.
+    Grid abstraction class (1 band image).
     Contains a numpy array and metadata like geo reference.
     """
 
@@ -452,19 +452,89 @@ class Grid(object):
         cell_georef = [self.geo_ref[0] + 0.5 * cx, cx, self.geo_ref[3] + 0.5 * cy, -cy]
         return bilinear_interpolation(self.grid, xy, nd_val, cell_georef)
 
-    def save(self, fname, format="GTiff", dco=None, colortable=None, srs=None):
-        # TODO: map numpy types to gdal types better - done internally in gdal I think...
-        if self.grid.dtype == np.float32:
-            dtype = gdal.GDT_Float32
-        elif self.grid.dtype == np.float64:
-            dtype = gdal.GDT_Float64
-        elif self.grid.dtype == np.int32:
-            dtype = gdal.GDT_Int32
-        elif self.grid.dtype == np.bool or self.grid.dtype == np.uint8:
-            dtype = gdal.GDT_Byte
+    def warp(self, dst_srs, cx = None, cy=None, out_extent=None, resample_method=gdal.GRA_Bilinear):
+        """
+        Warp to dst_srs (given as a GDAL wkt definition)
+        Args:
+            dst_srs: GDAL wkt srs definition (e.g. form osr.SpatialReference.ExportToWkt())
+            cx: horisontal output cellsize (calculate if None)
+            cy: vertical output cellsize (>0, calculate if None)
+            out_extent: (xmin, ymin, xmax, ymax) in output coord sys. (Will be calculated if None)
+            resample_method: A supported GDAL resample method, defaults to gdal.GRA_Bilinear
+        Returns:
+            a new grid object
+        """
+        if self.srs is None:
+            raise ValueError("Needs a srs definition for self.")
+        src_ds = self.as_gdal_dataset("in", "MEM")
+        # calculate dest georef and size
+        extent = map(float, self.extent)
+        source_srs = osr.SpatialReference(self.srs)
+        target_srs = osr.SpatialReference(dst_srs)
+        transform = osr.CoordinateTransformation(source_srs, target_srs)
+        new_corners = ((extent[0], extent[1]), (extent[0], extent[3]),
+                       (extent[2], extent[1]), (extent[2], extent[3]))
+        center = (extent[0] + (extent[2] - extent[0]) * 0.5, extent[1] + (extent[3] - extent[1]) * 0.5)
+        if out_extent is None:
+            xmin, xmax, ymin, ymax = None, None, None, None
+            for pt in new_corners:
+                x, y, z = transform.TransformPoint(float(pt[0]), float(pt[1]), 0)
+                xmin = min(x, xmin) if xmin is not None else x
+                xmax = max(x, xmax) if xmax is not None else x
+                ymin = min(y, ymin) if ymin is not None else y
+                ymax = max(y, ymax) if ymax is not None else y
         else:
-            return False  # TODO....
-        driver = gdal.GetDriverByName(format)
+            xmin, ymin, xmax, ymax = out_extent
+        if cx is None:
+            # match same cellsize (in center)
+            x1, y1, z1 = transform.TransformPoint(center[0], center[1], 0)
+            x2, y2, z2 = transform.TransformPoint(center[0] + self.geo_ref[1], center[1], 0)
+            cx = x2 - x1
+        if cy is None:
+            x1, y1, z1 = transform.TransformPoint(center[0], center[1])
+            # go 'up'
+            x2, y2, z2 = transform.TransformPoint(center[0], center[1] - self.geo_ref[5], 0)
+            cy = y2 - y1
+        assert cx > 0 and cy > 0
+        new_georef = [xmin, cx, 0, ymax, 0, -cy]
+        ncols = int(np.ceil((xmax - xmin) / cx))
+        nrows = int(np.ceil((ymax - ymin) / cy))
+        assert ncols < 5 * 1e4 and nrows < 5 * 1e4
+        mem_drv = src_ds.GetDriver()
+        dst_ds = mem_drv.Create("out", ncols, nrows, 1, self.npy2gdaltype(self.dtype))
+        dst_ds.SetGeoTransform(new_georef)
+        dst_ds.SetProjection(dst_srs)
+        band = dst_ds.GetRasterBand(1)
+        band.SetNoDataValue(self.nd_val)
+        band.WriteArray(np.ones((nrows, ncols), dtype=self.dtype) * self.nd_val)
+        rc = gdal.ReprojectImage(src_ds, dst_ds, self.srs, dst_srs, resample_method)
+        assert rc == 0
+        grid_out = dst_ds.ReadAsArray()
+        return Grid(grid_out, new_georef, self.nd_val, dst_srs) 
+
+    @classmethod
+    def npy2gdaltype(cls, npy_dtype):
+        """Get corresponding GDAL datatype"""
+        if npy_dtype == np.float32:
+            return gdal.GDT_Float32
+        elif npy_dtype == np.float64:
+            return gdal.GDT_Float64
+        elif npy_dtype == np.int32:
+            return gdal.GDT_Int32
+        elif npy_dtype == np.uint32:
+            return gdal.GDT_UInt32
+        elif npy_dtype == np.bool or self.grid.dtype == np.uint8:
+            return gdal.GDT_Byte
+        elif npy_dtype == np.uint16:
+            return gdal.GDT_Uint16
+        elif npy_dtype == np.int16:
+            return gdal.GDT_Int16
+        else:
+            raise NotImplementedError("dtype not supported - yet")
+
+    def as_gdal_dataset(self, fname, fmt="GTiff", dco=None, srs=None):
+        gdal_dtype = self.npy2gdaltype(self.dtype)
+        driver = gdal.GetDriverByName(fmt)
         assert(driver is not None)
         if os.path.exists(fname):
             try:
@@ -476,9 +546,9 @@ class Grid(object):
         else:
             LOG.info("Saving %s..." % fname)
         if dco:
-            dst_ds = driver.Create(fname, self.grid.shape[1], self.grid.shape[0], 1, dtype, options=dco)
+            dst_ds = driver.Create(fname, self.grid.shape[1], self.grid.shape[0], 1, gdal_dtype, options=dco)
         else:
-            dst_ds = driver.Create(fname, self.grid.shape[1], self.grid.shape[0], 1, dtype)
+            dst_ds = driver.Create(fname, self.grid.shape[1], self.grid.shape[0], 1, gdal_dtype)
         dst_ds.SetGeoTransform(self.geo_ref)
         if srs is None:  # will override self.srs which is default if set
             srs = self.srs
@@ -488,10 +558,19 @@ class Grid(object):
         if self.nd_val is not None:
             band.SetNoDataValue(self.nd_val)
         band.WriteArray(self.grid)
-        dst_ds = None
+        return dst_ds
+
+    def save(self, fname, fmt="GTiff", dco=None, srs=None):
+        dst_ds = self.as_gdal_dataset(fname, fmt, dco, srs)
+        dst_ds = None  # flush
         return True
 
+    @property
+    def extent(self):
+        return self.get_bounds()
+
     def get_bounds(self):
+        """Return grid extent as (xmin, ymin, xmax, ymax)"""
         return grid_extent(self.geo_ref, self.grid.shape)
 
     def correlate(self, other):
