@@ -638,6 +638,37 @@ def snap_to_polygon(xy_in, poly, dtol_v, dtol_bd=100):
     return ring_min, imin, False
 
 
+def mesh_as_points(shape, geo_ref):
+    """
+    Construct a mesh of xy coordinates corresponding to the cell centers of a grid.
+    Args:
+        shape: (nrows,ncols)
+        geo_ref: GDAL style georeference of grid.
+    Returns:
+        Numpy array of shape (nrows*ncols,2).
+    """
+    x = geo_ref[0] + geo_ref[1] * 0.5 + np.arange(0, shape[1]) * geo_ref[1]
+    y = geo_ref[3] + geo_ref[5] * 0.5 + np.arange(0, shape[0]) * geo_ref[5]
+    x, y = np.meshgrid(x, y)
+    xy = np.column_stack((x.flatten(), y.flatten()))
+    assert(xy.shape[0] == shape[0] * shape[1])
+    return xy
+
+
+def rasterize_polygon(poly_as_array, shape, geo_ref):
+    """
+    Return a boolean numpy mask with 1 for cells within polygon.
+    Args:
+       poly_as_array: A polygon as returned by ogrpoly2array (list of numpy arrays / rings)
+       shape: Shape (nrows, ncols) of output array
+       geo_ref: GDAL style georeference of grid.
+    Returns:
+        Numpy boolean 2d array.
+    """
+    xy = mesh_as_points(shape, geo_ref)
+    return points_in_polygon(xy, poly_as_array).reshape(shape)
+
+
 def unit_test(n=1000):
     verts = np.asarray(
         ((0, 0), (1, 0), (1, 1), (0, 1), (0, 0)), dtype=np.float64)

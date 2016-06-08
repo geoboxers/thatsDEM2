@@ -70,23 +70,6 @@ def slice_array(arr, slicer=None):
     return arr
 
 
-def mesh_as_points(shape, geo_ref):
-    """
-    Construct a mesh of xy coordinates corresponding to the cell centers of a grid.
-    Args:
-        shape: (nrows,ncols)
-        geo_ref: GDAL style georeference of grid.
-    Returns:
-        Numpy array of shape (nrows*ncols,2).
-    """
-    x = geo_ref[0] + geo_ref[1] * 0.5 + np.arange(0, shape[1]) * geo_ref[1]
-    y = geo_ref[3] + geo_ref[5] * 0.5 + np.arange(0, shape[0]) * geo_ref[5]
-    x, y = np.meshgrid(x, y)
-    xy = np.column_stack((x.flatten(), y.flatten()))
-    assert(xy.shape[0] == shape[0] * shape[1])
-    return xy
-
-
 def empty_like(pc):
     """
     Contruct and empty Pointcloud object with same attributes as input pointcloud.
@@ -630,7 +613,7 @@ class Pointcloud(object):
                 srad = self.index_header[4]
             filter_func = getattr(self, method)
             assert hasattr(filter_func, "__call__")
-            pts = mesh_as_points((nrows, ncols), geo_ref)
+            pts = array_geometry.mesh_as_points((nrows, ncols), geo_ref)
             if method == "density_filter":
                 z = filter_func(srad, xy=pts).reshape((nrows, ncols))
             else:
@@ -991,7 +974,7 @@ class Pointcloud(object):
         Returns:
             A Pointcloud -or subclass- object
         """
-        xy = mesh_as_points(z.shape, geo_ref)
+        xy = array_geometry.mesh_as_points(z.shape, geo_ref)
         z = z.flatten()
         if nd_val is not None:
             M = (z != nd_val)
