@@ -360,8 +360,13 @@ class QhullTriangulation(TriangulationBase):
         self.validate_points(points)
         self.points = points
         self.delaunay = Delaunay(self.points)
-        self.vertices = self.delaunay.simplices.ctypes.data_as(LP_CINT)
-        self.ntrig = self.delaunay.simplices.shape[0]
+        # for old scipy version:
+        if hasattr(self.delaunay, "simplices"):
+            simplices = self.delaunay.simplices
+        else:
+            simplices = self.delaunay.vertices
+        self.vertices = simplices.ctypes.data_as(LP_CINT)
+        self.ntrig = simplices.shape[0]
         self.index = lib.build_index(
             points.ctypes.data_as(LP_CDOUBLE),
             self.vertices,
