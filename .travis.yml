@@ -8,5 +8,5 @@ before_install:
   - sudo apt-get update -qq
   - sudo apt-get install python-gdal python-numpy python-scipy
 install:
-  - python build.py
+  - scons
 script: nosetests -v
