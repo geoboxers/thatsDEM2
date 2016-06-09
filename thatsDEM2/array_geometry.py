@@ -12,12 +12,17 @@
 # ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
 # OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 #
+"""
+Methods to work easier with ogr geometries and numpy arrays in combination.
+Contains some custom geospatial methods action on numpy arrays.
+silyko, June 2016.
+"""
 import os
 import ctypes
 import numpy as np
 from osgeo import ogr
-LIBDIR = os.path.realpath(os.path.join(os.path.dirname(__file__), "..", "lib"))
-LIBNAME = "libfgeom"
+from thatsDEM2.shared_libraries import *
+
 XY_TYPE = np.ctypeslib.ndpointer(dtype=np.float64, ndim=2, flags=['C', 'O', 'A', 'W'])
 GRID_TYPE = np.ctypeslib.ndpointer(
     dtype=np.float64, ndim=2, flags=['C', 'O', 'A', 'W'])
@@ -35,13 +40,10 @@ INT32_VOXELS = np.ctypeslib.ndpointer(
     dtype=np.int32, ndim=3, flags=['C', 'O', 'A', 'W'])
 INT32_TYPE = np.ctypeslib.ndpointer(
     dtype=np.int32, ndim=1, flags=['C', 'O', 'A', 'W'])
-# ctypes pointer types
-LP_CINT = ctypes.POINTER(ctypes.c_int)
-LP_CCHAR = ctypes.POINTER(ctypes.c_char)
-LP_CDOUBLE = ctypes.POINTER(ctypes.c_double)
+
 
 # Load the library using np.ctypeslib
-lib = np.ctypeslib.load_library(LIBNAME, LIBDIR)
+lib = np.ctypeslib.load_library(LIB_FGEOM, LIB_DIR)
 
 ##############
 # corresponds to
@@ -222,7 +224,7 @@ def line_intersection(l1, l2):
     s1 = - D0 / D2
     s2 = D1 / D2
     if 0 <= s1 <= 1 and 0 <= s2 <= 1:
-        return l1[0] + s1 * v1, s1 ,s2
+        return l1[0] + s1 * v1, s1, s2
     return None, None, None
 
 

@@ -17,7 +17,7 @@ class OtherTests(unittest.TestCase):
     def test_curve_simplify(self):
         LOG.info("Trying array_geometry.simplify_linestring")
         xy = np.asarray([(0.0, 0.0), (0.0, 1.0), (1.1, 1.1)], dtype=np.float64)
-        xy_out = array_geometry.simplify_linestring(xy, 1/np.sqrt(2) + 0.1)
+        xy_out = array_geometry.simplify_linestring(xy, 1 / np.sqrt(2) + 0.1)
         self.assertEqual(xy_out.shape[0], 2)
 
     def test_grid_walk_mask(self):
@@ -49,7 +49,7 @@ class OtherTests(unittest.TestCase):
         LOG.info("Testing Grid.warp")
         arr = np.random.rand(100, 100) * 100
         # 10 by 10 degrees input extent
-        geo_ref = [-5, 0.1 , 0, 5, 0, -0.1]
+        geo_ref = [-5, 0.1, 0, 5, 0, -0.1]
         srs_in = osr.SpatialReference()
         srs_in.ImportFromEPSG(4326)
         srs_out = osr.SpatialReference()

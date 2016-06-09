@@ -1,3 +1,15 @@
+This software can be built against a modified version of Triangle, which is
+Copyright (C) Jonathan Richard Shewchuk, and distributed under the
+terms outlined in the section "Triangle" below.
+
+Triangle can be downloaded from http://www.netlib.org/voronoi/
+
+A script which can automatically patch triangle (for 64 bit systems) is included in this software.
+The applied modifications are tracked in the file
+src/triangle/triangle_patch.diff.
+
+--- Triangle ---
+
 Triangle
 A Two-Dimensional Quality Mesh Generator and Delaunay Triangulator.
 Version 1.6

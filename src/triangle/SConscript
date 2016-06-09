@@ -1,9 +1,15 @@
 # Build libtripy
 Import("env", "IS_WIN", "TRIANGLE_DIR")
 cloned_env = env.Clone()
-SRC_INDEX = ["_tri.c","trig_index.c"]
-cloned_env.Append(LIBPATH=[TRIANGLE_DIR])
-cloned_env.Append(CPPPATH=[TRIANGLE_DIR])
-libtripy = cloned_env.SharedLibrary(target=env["libtripy"], source=SRC_INDEX, LIBS=[env["libtri"]])
+SRC_INDEX = ["trig_index.c"]
+if TRIANGLE_DIR:
+    # Building against triangle
+    cloned_env.Append(LIBPATH=[TRIANGLE_DIR])
+    cloned_env.Append(CPPPATH=[TRIANGLE_DIR])
+    LIBS = [env["libtri"]]
+    SRC_INDEX.append("tri_wrap.c")
+else:
+    # Not building against triangle
+    LIBS = []
+libtripy = cloned_env.SharedLibrary(target=env["libtripy"], source=SRC_INDEX, LIBS=LIBS)
 Return("libtripy")
-

@@ -79,7 +79,7 @@ class TestPointcloud(unittest.TestCase):
 
     def test_cut_pointcloud(self):
         LOG.info("Testing cut poincloud")
-        pc = pointcloud.Pointcloud(np.ones((5, 2)), np.ones(5), 
+        pc = pointcloud.Pointcloud(np.ones((5, 2)), np.ones(5),
                                    some_attr=np.ones(5), some_other=np.ones(5))
         M = np.array([1, 0, 1, 1, 0]).astype(np.bool)
         pc = pc.cut(M)
@@ -100,15 +100,14 @@ class TestPointcloud(unittest.TestCase):
                                         2, 2, 3], some_attr=np.ones(3))
         pc2 = pc.cut_to_class(3).cut_to_box(-10, -10, 10, 10).cut_to_class(3)
         self.assertEqual(pc2.size, 1)
-    
+
     def test_pointcloud_conversion(self):
         LOG.info("Testing pointcloud conversion")
-        pc = pointcloud.Pointcloud(np.ones((5, 2)), np.ones(5), 
+        pc = pointcloud.Pointcloud(np.ones((5, 2)), np.ones(5),
                                    c=np.ones(5, dtype=np.uint8))
         lpc1 = pc.astype(pointcloud.LidarPointcloud)
         lpc2 = lpc1.cut_to_class(1)
         self.assertEqual(lpc1.size, lpc2.size)
-        
 
     def test_sort_pointcloud(self):
         LOG.info("Test pointcloud sorting")
@@ -239,21 +238,21 @@ class TestPointcloud(unittest.TestCase):
         pc.sort_spatially(2)
         idx = pc.nearest_filter(2, xy=pc.xy + 0.25)
         self.assertTrue((idx == np.arange(0, 100)).all())
-    
+
     def test_filter_with_less_input_points(self):
         LOG.info("Test pointcloud nearest filter")
         pc = pointcloud.Pointcloud.from_array(np.ones((10, 10)), [0, 1, 0, 10, 0, -1])
         pc.sort_spatially(2)
-        xy = pc.xy[2] + np.random.rand(3,2)*0.25
+        xy = pc.xy[2] + np.random.rand(3, 2) * 0.25
         idx = pc.nearest_filter(1, xy=xy)
         self.assertEqual(idx.shape[0], xy.shape[0])
         self.assertTrue((idx == 2).all())
-    
+
     def test_filter_with_more_input_points(self):
         LOG.info("Test pointcloud nearest filter")
         pc = pointcloud.Pointcloud.from_array(np.ones((10, 10)), [0, 1, 0, 10, 0, -1])
         pc.sort_spatially(2)
-        xy = pc.xy[2] + np.random.rand(400,2)*0.25
+        xy = pc.xy[2] + np.random.rand(400, 2) * 0.25
         idx = pc.nearest_filter(1, xy=xy)
         self.assertEqual(idx.shape[0], xy.shape[0])
         self.assertTrue((idx == 2).all())
@@ -288,7 +287,7 @@ class TestPointcloud(unittest.TestCase):
         pc.sort_spatially(2)
         z = pc.apply_2d_filter(2, self.custom_filter, attr="c")
         self.assertTrue((z == 5).all())
-    
+
     def test_3dmean_filter(self):
         LOG.info("Test pointcloud custom filter")
         pc = pointcloud.Pointcloud.from_array(np.ones((10, 10)), [0, 1, 0, 10, 0, -1])

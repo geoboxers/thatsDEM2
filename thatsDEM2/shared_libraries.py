@@ -11,6 +11,28 @@
 # WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
 # ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
 # OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
-#
+"""
+Declare names of shared libraries and gather common ctypes definitions.
+silyko, June 2016
+"""
+import os
+import sys
+import ctypes
 
-__version__ = "0.1.dev1"
+LIB_DIR = os.path.realpath(os.path.join(os.path.dirname(__file__), "lib"))
+LIB_TRIPY = os.path.join(LIB_DIR, "libtripy")
+LIB_FGEOM = "libfgeom"
+LIB_GRID = "libgrid"
+
+if sys.platform.startswith("win"):
+    LIB_TRIPY += ".dll"
+elif "darwin" in sys.platform:
+    LIB_TRIPY += ".dylib"
+else:
+    LIB_TRIPY += ".so"
+# ctypes pointers
+LP_CDOUBLE = ctypes.POINTER(ctypes.c_double)
+LP_CFLOAT = ctypes.POINTER(ctypes.c_float)
+LP_CULONG = ctypes.POINTER(ctypes.c_ulong)
+LP_CINT = ctypes.POINTER(ctypes.c_int)
+LP_CCHAR = ctypes.POINTER(ctypes.c_char)

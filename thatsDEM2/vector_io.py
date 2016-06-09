@@ -43,7 +43,7 @@ def open(cstr, layername=None, layersql=None, extent=None, sql_dialect=None):
         raise Exception("Failed to open " + cstr)
     if layersql is not None:  # an sql statement will take precedence
         if extent is not None and EXTENT_WKT in layersql:
-            wkt = "'"+extent_to_wkt(extent)+"'"
+            wkt = "'" + extent_to_wkt(extent) + "'"
             layersql = layersql.replace(EXTENT_WKT, wkt)
         # restrict to ASCII encodable chars here -
         # don't know what the datasource

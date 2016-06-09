@@ -10,18 +10,43 @@ Highly modified - and thus renamed thatsDEM2
 ### Build instructions ###
 
 Pull the repository and do the following - requires Scons!
-
-```
-
-> python build.py
-
-```
-Use --debug for a debug build.
 Will require Mingw64 on Windows (setup a proper environment or run from a Mingw64 shell).
 
+```
+
+> scons
+
+```
+Use debug=1 for a debug build.
+The triangulation engine can use triangle by Jonathan Richard Schewchuk.
+In order to enable that, you'll need to download triangle.zip from http://www.netlib.org/voronoi/
+and patch the source (for 64-bit systems) using the included utility: patch_triangle.py:
+
+```
+
+> python patch_triangle <out_dir> <path_to_triangle.zip>
+
+```
+and then, specify:
+
+```
+
+> scons with-triangle=<out_dir>
+
+```
+
+If NOT using triangle, the triangulation engine will fall back to the slower and less robust scipy.spatial.Delaunay
+ 
 
 ### Installation ###
-There is no setup.py. You'll need to e.g. modify PYTHONPATH.
+After building with SCons you can use the simple setup script to install:
+
+```
+
+> python setup.py install
+
+```
+Or you can simply copy the thatsDEM2 subfolder to somewhere on your PYTHONPATH.
 
 ### Testing ###
 Can be run with nose:
@@ -53,7 +78,7 @@ pc1.triangulate() # will use triangle
 g1 = pc1.get_grid(ncols=1000, nrows=1000, method="triangulation")
 pc2 = pc1.copy()
 pc2.sort_spatially(2)
-g2 = pc2.get_grid(ncols=1000, nrows=1000, method="idw_filter")
+g2 = pc2.get_grid(ncols=1000, nrows=1000, method="idw_filter", srad=2)
 h2 = g2.get_hillshade()
 h2.save("hillshade.tif", dco=["TILED=YES", "COMPRESS=LZW"])
 ```

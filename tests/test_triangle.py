@@ -14,9 +14,11 @@ from thatsDEM2 import triangle
 
 LOG = logging.getLogger(__name__)
 
+
 class TestTriangle(unittest.TestCase):
-    
+
     def setUp(self):
+        LOG.info("Built against triangle: %s" % triangle.HAS_TRIANGLE)
         self.n1 = 4000
         self.n2 = 4000
         self.points = np.random.rand(self.n1, 2) * 1000.0
@@ -25,11 +27,11 @@ class TestTriangle(unittest.TestCase):
         t2 = time.clock()
         t3 = t2 - t1
         LOG.info("Building triangulation and index of %d points: %.4f s" % (self.n1, t3))
-    
+
     def test_optimize_index(self):
         LOG.info("Testing optimize index.")
         self.tri.optimize_index()
-    
+
     def test_find_triangles(self):
         LOG.info("Testing Find triangles.")
         xmin, ymin = self.points.min(axis=0)
@@ -45,7 +47,7 @@ class TestTriangle(unittest.TestCase):
         LOG.info("Finding %d simplices: %.4f s, pr. 1e6: %.4f s" % (self.n2, t3, t3 / self.n2 * 1e6))
         self.assertGreaterEqual(T.min(), 0)
         self.assertLess(T.max(), self.tri.ntrig)
-    
+
     def test_interpolation(self):
         z = np.random.rand(self.n1) * 100
         t1 = time.clock()
@@ -54,11 +56,9 @@ class TestTriangle(unittest.TestCase):
         t3 = t2 - t1
         LOG.info("Interpolation test of vertices:  %.4f s, pr. 1e6: %.4f s" % (t3, t3 / self.n1 * 1e6))
         D = np.fabs(z - zi)
-        self.assertLess(D.max() , 1e-4)
+        self.assertLess(D.max(), 1e-4)
 
 
-
-        
 if __name__ == "__main__":
     logging.basicConfig(level=logging.DEBUG)
     unittest.main()

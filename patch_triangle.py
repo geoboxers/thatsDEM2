@@ -3,7 +3,7 @@
 SCons wrapper building thatsDEM. Yummy!
 @author: simlk
 """
-# Copyright (c) 2015, Geoboxers <info@geoboxers.com>
+# Copyright (c) 2015, 2016 Geoboxers <info@geoboxers.com>
 # Permission to use, copy, modify, and/or distribute this software for any
 # purpose with or without fee is hereby granted, provided that the above
 # copyright notice and this permission notice appear in all copies.
@@ -16,56 +16,34 @@ SCons wrapper building thatsDEM. Yummy!
 # ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
 # OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 #
-
+"""
+Perform patching of Jonathan Schewchuk's triangle for 64 bit systems.
+Will establish a source directory with patched files and a SConscript for the SCons build.
+The SCons build system should then be able to build a static library (libtriangle) and that directory.
+"""
 
 import os
-import subprocess
-import urllib2
 import zipfile
-import md5
+import hashlib
 import logging
 import argparse
-import glob
 import json
+import shutil
 
-LOG = logging.getLogger("build")
+LOG = logging.getLogger("patch_triangle")
 HERE = os.path.abspath(os.path.dirname(__file__))
 SRC_DIR = os.path.join(HERE, "src")
 # Stuff for triangle
-TRIANGLE_DIR = os.path.join(SRC_DIR, "triangle", "store")
-LIBTRIANGLE = "libtriangle*"
 PATCH_TRIANGLE = os.path.join(SRC_DIR, "triangle", "patch.json")
-MD5_TRI = "Yjh\xfe\x94o)5\xcd\xff\xb1O\x1e$D\xc4"
-URL_TRIANGLE = "http://www.netlib.org/voronoi/triangle.zip"
+SCONSCRIPT_TRIANGLE = os.path.join(SRC_DIR, "triangle", "build_triangle")
+MD5_TRI = "596a68fe946f2935cdffb14f1e2444c4"
 
-
-def is_newer(p1, p2):
-    """We need to hack scons a bit, since we wanna download and patch
-    triangle. This is used to determine if a target is newer than source,
-    and to determine if the patching process is needed.
-    """
-    if not os.path.exists(p1):
-        return False
-    if not os.path.exists(p2):
-        return True
-    return os.path.getmtime(p1) > os.path.getmtime(p2)
-
-
-def patch_triangle(wrkdir, trizip=None):
+def patch_triangle(wrkdir, trizip):
+    """Extact triangle source to wrkdir - perfrom patching."""
     LOG.info("Starting patching process of triangle...")
     patching_exception = None
     tri_c_out = os.path.join(wrkdir, "triangle.c")
-    delete_trizip = False
     try:
-        if trizip is None:
-            delete_trizip = True
-            trizip = os.path.join(wrkdir, "triangle.zip")
-            LOG.info("Downloading triangle...")
-            with open(trizip, "wb") as f:
-                response = urllib2.urlopen(URL_TRIANGLE)
-                assert(response.getcode() == 200)
-                f.write(response.read())
-        LOG.info("Done...")
         zf = zipfile.ZipFile(trizip)
         zf.extract("triangle.c", wrkdir)
         zf.extract("triangle.h", wrkdir)
@@ -73,7 +51,7 @@ def patch_triangle(wrkdir, trizip=None):
         LOG.info("Checking md5 sum of triangle.c...")
         with open(tri_c_out, "rb") as f:
             tri_bytes = f.read()
-            m5 = md5.new(tri_bytes).digest()
+            m5 = hashlib.md5(tri_bytes).hexdigest()
         assert(m5 == MD5_TRI)
         LOG.info("ok...")
         # A hassle to fiddle with git apply, hg pacth etc...
@@ -114,34 +92,26 @@ def patch_triangle(wrkdir, trizip=None):
         with open(tri_c_out, "wb") as f:
             f.write("\n".join(lines_out))
     finally:
-        if os.path.isfile(trizip) and delete_trizip:
-            os.remove(trizip)
         if patching_exception:
             raise patching_exception
 
+def main(outdir, trizip):
+    # Check that we are not trying to create a subdir to this repository
+    if os.path.abspath(outdir).startswith(HERE):
+        LOG.exception("You should not use a subdir of this repository!")
+        return 1
+    if not os.path.isdir(outdir):
+        LOG.info("Creating " + outdir)
+        os.makedirs(outdir)
+    shutil.copy(SCONSCRIPT_TRIANGLE, os.path.join(outdir, "SConscript"))
+    patch_triangle(outdir, trizip)
+    return 0
 
-def build(force_triangle=False, triangle_zip=None, debug=False):
-    """Decide if triangle needs to be downloaded and patched."""
-    do_triangle = force_triangle
-    triangle_h = os.path.join(TRIANGLE_DIR, "triangle.h")
-    do_triangle |= is_newer(PATCH_TRIANGLE, triangle_h)
-    triangle_libs = glob.glob(os.path.join(TRIANGLE_DIR, LIBTRIANGLE))
-    do_triangle |= not triangle_libs
-    if do_triangle:
-        patch_triangle(TRIANGLE_DIR, triangle_zip)
-    LOG.info("Running SCons...")
-    rc = subprocess.call("scons do_triangle=%d debug=%d" % (int(do_triangle), int(debug)), shell=True)
-    triangle_c = os.path.join(TRIANGLE_DIR, "triangle.c")
-    if os.path.isfile(triangle_c):
-        # Don't accidently include triangle.c in repo...
-        os.remove(triangle_c)
-    assert rc == 0
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.DEBUG)
-    parser = argparse.ArgumentParser(description="Build script for thatsDEM. Wraps SCons")
-    parser.add_argument("--debug", action="store_true", help="Do a debug build.")
-    parser.add_argument("--force_triangle", action="store_true", help="Force building triangle.")
-    parser.add_argument("--triangle_zip", help="Point to a local triangle.zip - instead of downloading.")
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("outdir", help="Path to output source dir for patched files and SConscript.")
+    parser.add_argument("triangle_zip", help="Path to downloaded triangle zipfile")
     pargs = parser.parse_args()
-    build(pargs.force_triangle, pargs.triangle_zip, debug=pargs.debug)
+    main(pargs.outdir, pargs.triangle_zip)

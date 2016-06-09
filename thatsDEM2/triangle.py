@@ -1,5 +1,5 @@
 # Original work Copyright (c) 2015, Danish Geodata Agency <gst@gst.dk>
-# Modified work Copyright (c) 2015, Geoboxers <info@geoboxers.com>
+# Modified work Copyright (c) 2015-2016, Geoboxers <info@geoboxers.com>
 #
 # Permission to use, copy, modify, and/or distribute this software for any
 # purpose with or without fee is hereby granted, provided that the above
@@ -12,46 +12,50 @@
 # WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
 # ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
 # OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
-#
+"""
+Triangulation classes.
+Can use triangle by Jonathan Schewchuk if c extension is built against that.
+Speedier implementation of finding simplices, compared to scipy.spatial.Delaunay.
+silyko, June 2016.
+"""
 import sys
 import os
 import ctypes
-import time
 import numpy as np
-LIBDIR = os.path.realpath(os.path.join(os.path.dirname(__file__), "..", "lib"))
+from thatsDEM2.shared_libraries import *
 
-LIBNAME = "libtripy"
-#'64' not appended to libname anymore
-if sys.platform.startswith("win"):
-    LIBNAME += ".dll"
-    os.environ["PATH"] += ";" + LIBDIR
-elif "darwin" in sys.platform:
-    LIBNAME += ".dylib"
-else:
-    LIBNAME += ".so"
-LP_CDOUBLE = ctypes.POINTER(ctypes.c_double)
-LP_CFLOAT = ctypes.POINTER(ctypes.c_float)
-LP_CINT = ctypes.POINTER(ctypes.c_int)
-LP_CCHAR = ctypes.POINTER(ctypes.c_char)
-# lib_name=os.path.join(os.path.dirname(__file__),LIBNAME)
-lib_name = os.path.join(LIBDIR, LIBNAME)
 # Load library directly via ctypes. Could also have used the numpy interface.
-lib = ctypes.cdll.LoadLibrary(lib_name)
-# Args and return types of c functions. Corresponds to a header file.
-lib.use_triangle.restype = LP_CINT
-lib.use_triangle.argtypes = [LP_CDOUBLE, ctypes.c_int, LP_CINT]
-# int *use_triangle_pslg(double *xy, int *segments, double *holes, int np, int nseg, int nholes, int *nt)
-lib.use_triangle_pslg.restype = LP_CINT
-lib.use_triangle_pslg.argtypes = [
-    LP_CDOUBLE,
-    LP_CINT,
-    LP_CDOUBLE,
-    ctypes.c_int,
-    ctypes.c_int,
-    ctypes.c_int,
-    LP_CINT]
-lib.free_vertices.restype = None
-lib.free_vertices.argtypes = [LP_CINT]
+lib = ctypes.cdll.LoadLibrary(LIB_TRIPY)
+# First see if compiled against triangle?
+try:
+    # Args and return types of c functions. Corresponds to a header file.
+    lib.use_triangle.restype = LP_CINT
+    lib.use_triangle.argtypes = [XY_TYPE, ctypes.c_int, LP_CINT]
+    # int *use_triangle_pslg(double *xy, int *segments, double *holes, int np, int nseg, int nholes, int *nt)
+    lib.use_triangle_pslg.restype = LP_CINT
+    lib.use_triangle_pslg.argtypes = [
+        LP_CDOUBLE,
+        LP_CINT,
+        LP_CDOUBLE,
+        ctypes.c_int,
+        ctypes.c_int,
+        ctypes.c_int,
+        LP_CINT]
+    # void get_triangle_centers(double *xy, int *triangles, double *out, int n_trigs)
+    lib.get_triangle_centers.restype = None
+    lib.get_triangle_centers.argtypes = [LP_CDOUBLE, LP_CINT, LP_CDOUBLE, ctypes.c_int]
+    lib.free_vertices.restype = None
+    lib.free_vertices.argtypes = [LP_CINT]
+    lib.get_triangles.argtypes = [LP_CINT, LP_CINT, LP_CINT, ctypes.c_int, ctypes.c_int]
+    lib.get_triangles.restype = None
+except AttributeError:
+    # If triangle not available - use scipy.spatial
+    from scipy.spatial import Delaunay
+    HAS_TRIANGLE = False
+else:
+    HAS_TRIANGLE = True
+
+# Declare additional functions
 lib.free_index.restype = None
 lib.free_index.argtypes = [ctypes.c_void_p]
 lib.find_triangle.restype = None
@@ -63,15 +67,13 @@ lib.find_triangle.argtypes = [
     ctypes.c_void_p,
     LP_CCHAR,
     ctypes.c_int]
-# void find_appropriate_triangles(double *pts, int *out, double *base_pts,
-# double *base_z, int *tri, spatial_index *ind, int np, double tol_xy,
-# double tol_z);
+
 lib.inspect_index.restype = None
 lib.inspect_index.argtypes = [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_int]
+
 lib.build_index.restype = ctypes.c_void_p
 lib.build_index.argtypes = [LP_CDOUBLE, LP_CINT, ctypes.c_double, ctypes.c_int, ctypes.c_int]
-# interpolate2(double *pts, double *base_pts, double *base_z, double *out,
-# int *tri, spatial_index *ind, int np)
+
 lib.interpolate.argtypes = [
     LP_CDOUBLE,
     LP_CDOUBLE,
@@ -106,32 +108,30 @@ lib.make_grid_low.argtypes = [LP_CDOUBLE,
                               ctypes.c_int,
                               ctypes.c_int] + [ctypes.c_double] * 5 + [ctypes.c_void_p]
 lib.make_grid_low.restype = None
-lib.get_triangles.argtypes = [LP_CINT, LP_CINT, LP_CINT, ctypes.c_int, ctypes.c_int]
-lib.get_triangles.restype = None
+
 lib.optimize_index.argtypes = [ctypes.c_void_p]
 lib.optimize_index.restype = None
-# void get_triangle_centers(double *xy, int *triangles, double *out, int n_trigs)
-lib.get_triangle_centers.argtypres = [LP_CDOUBLE, LP_CINT, LP_CDOUBLE, ctypes.c_int]
 
 
 class TriangulationBase(object):
     """Triangulation class inspired by scipy.spatial.Delaunay
     Uses Triangle to do the hard work. Automatically builds an index.
     """
-    vertices = None
+    vertices = None  # actually a pointer to int array of triangles
     index = None
     points = None
     segments = None
     holes = None
     ntrig = None
-    transform = None  # can be used to speed up things even more....
 
     def __del__(self):
         """Destructor"""
         if self.vertices is not None:
             lib.free_vertices(self.vertices)
+            self.vertices = None
         if self.index is not None:
             lib.free_index(self.index)
+            self.index = None
 
     def validate_points(self, points, ndim=2, dtype=np.float64):
         # ALL this stuff is not needed if we use numpys ctypeslib interface - TODO.
@@ -148,7 +148,10 @@ class TriangulationBase(object):
             raise ValueError("Bad shape of input - points:(n,2) z: (n,), indices: (n,)")
 
     def interpolate(self, z_base, xy_in, nd_val=-999, mask=None):
-        """Barycentric interpolation of input points xy_in based on values z_base in vertices. Points outside triangulation gets nd_val"""
+        """
+        Barycentric interpolation of input points xy_in based on values z_base in vertices.
+        Points outside triangulation gets nd_val
+        """
         self.validate_points(xy_in)
         self.validate_points(z_base, 1)
         if z_base.shape[0] != self.points.shape[0]:
@@ -162,7 +165,8 @@ class TriangulationBase(object):
         else:
             pmask = None
         out = np.empty((xy_in.shape[0],), dtype=np.float64)
-        lib.interpolate(xy_in.ctypes.data_as(LP_CDOUBLE), self.points.ctypes.data_as(LP_CDOUBLE), z_base.ctypes.data_as(LP_CDOUBLE),
+        lib.interpolate(xy_in.ctypes.data_as(LP_CDOUBLE), self.points.ctypes.data_as(LP_CDOUBLE),
+                        z_base.ctypes.data_as(LP_CDOUBLE),
                         out.ctypes.data_as(LP_CDOUBLE), nd_val, self.vertices, self.index, pmask, xy_in.shape[0])
         return out
 
@@ -277,7 +281,10 @@ class TriangulationBase(object):
             self.ntrig)
 
     def optimize_index(self):
-        """Only shrinks index slightly in memory. Should also sort index after areas of intersections between cells and triangles..."""
+        """
+        Only shrinks index slightly in memory.
+        """
+        # TODO: Should also sort index after areas of intersections between cells and triangles.
         lib.optimize_index(self.index)
 
     def inspect_index(self):
@@ -316,10 +323,15 @@ class TriangulationBase(object):
         return out
 
 
-class Triangulation(TriangulationBase):
-    """TriangulationBase implementation. Will construct a triangulation and an index of triangles."""
+class SchewchukTriangulation(TriangulationBase):
+    """
+    TriangulationBase implementation. Will construct a triangulation and an index of triangles.
+    Requires triangle by Jonathan Richard Shewchuk.
+    """
 
     def __init__(self, points, cs=-1):
+        if not HAS_TRIANGLE:
+            raise Exception("Requires that libtripy is built against triangle!")
         self.validate_points(points)
         self.points = points
         nt = ctypes.c_int(0)
@@ -328,8 +340,6 @@ class Triangulation(TriangulationBase):
             points.shape[0],
             ctypes.byref(nt))
         self.ntrig = nt.value
-        #print("Triangles: %d" %self.ntrig)
-        t1 = time.clock()
         self.index = lib.build_index(
             points.ctypes.data_as(LP_CDOUBLE),
             self.vertices,
@@ -338,11 +348,62 @@ class Triangulation(TriangulationBase):
             self.ntrig)
         if self.index is None:
             raise Exception("Failed to build index...")
-        t2 = time.clock()
+
+
+class QhullTriangulation(TriangulationBase):
+    """
+    Triangulation class using scipy.spatial.Delaunay instead of triangle.
+    Slower and not as robust as triangle.
+    """
+
+    def __init__(self, points, cs=-1):
+        self.validate_points(points)
+        self.points = points
+        self.delaunay = Delaunay(self.points)
+        self.vertices = self.delaunay.simplices.ctypes.data_as(LP_CINT)
+        self.ntrig = self.delaunay.simplices.shape[0]
+        self.index = lib.build_index(
+            points.ctypes.data_as(LP_CDOUBLE),
+            self.vertices,
+            cs,
+            points.shape[0],
+            self.ntrig)
+        if self.index is None:
+            raise Exception("Failed to build index...")
+
+    def __del__(self):
+        """Destructor - override default, don't free triangle array"""
+        if self.index is not None:
+            lib.free_index(self.index)
+            self.index = None
+
+    def find_triangles_scipy(self, xy):
+        return self.delaunay.find_simplex(xy)
+
+    def get_triangles(self):
+        return self.delaunay.simplices
+
+    def get_triangle_centers(self):
+        T = self.delaunay.simplices
+        p = self.points[T[:, 0]]
+        p += self.point[T[:, 1]]
+        p += self.points[T[:, 2]]
+        return p / 3
+
+if HAS_TRIANGLE:
+    Triangulation = SchewchukTriangulation
+else:
+    Triangulation = QhullTriangulation
+
+
+def using_triangle():
+    """Just a convenience for a user to check whether libtripy was built against triangle."""
+    return HAS_TRIANGLE
 
 
 class PolygonData(object):
     """Helper class for handling data of a PSLG-triangulation"""
+
     def __init__(self, rings, **attrs):
         """
         Args:
@@ -357,13 +418,13 @@ class PolygonData(object):
         self._ring_slices = []  # start index, stop_index in self.points for each ring
         self._segments = np.empty((0, 2), dtype=np.int32)
         self._holes = np.zeros((0, 2), dtype=np.float64)
-        self._inner_points = np.empty((0, 2), dtype=np.float64) # points not 'inner' segments
+        self._inner_points = np.empty((0, 2), dtype=np.float64)  # points not 'inner' segments
         self._attrs = {a: np.empty(0, dtype=np.float64) for a in attrs}
         self._inner_attrs = {a: np.empty(0, dtype=np.float64) for a in attrs}
         for i, ring in enumerate(rings):
             _attrs = {a: attrs[a][i] for a in attrs}
-            self._add_ring(rings[i], is_hole = (i > 0), **_attrs)
-        
+            self._add_ring(rings[i], is_hole=(i > 0), **_attrs)
+
     def _add_ring(self, ring, is_hole=False, **attrs):
         """Add some more holes / rings"""
         if (ring[0, :] == ring[-1, :]).all():
@@ -381,7 +442,7 @@ class PolygonData(object):
         self._ring_slices.append((self._points.shape[0], self._points.shape[0] + ring.shape[0]))
         self._points = np.vstack((self._points, ring))
         for a in attrs:
-            self._attrs[a] = np.concatenate((self._attrs[a], attrs[a])) 
+            self._attrs[a] = np.concatenate((self._attrs[a], attrs[a]))
         self._segments = np.vstack((self._segments, segments))
 
     def add_holes(self, rings, **attrs):
@@ -391,12 +452,12 @@ class PolygonData(object):
         for i, ring in enumerate(rings):
             _attrs = {a: attrs[a][i] for a in attrs}
             self._add_ring(ring, is_hole=True, **_attrs)
-    
+
     def add_points_and_segments(self, xy, segments, **attrs):
         """Add some more points and segments."""
         if not set(attrs.keys()).issubset(set(self._attrs.keys())):
             raise ValueError("Cannot create new attrs here.")
-        
+
         n = self._points.shape[0]
         self._points = np.vstack((self._points, xy))
         assert segments.max() < xy.shape[0]
@@ -404,7 +465,7 @@ class PolygonData(object):
         self._segments = np.vstack((self._segments, segments + n))
         for a in attrs:
             self._attrs[a] = np.concatenate((self._attrs[a], attrs[a]))
-    
+
     def add_inner_points(self, xy, **attrs):
         """Add some points WITHOUT segments.
         We might want to edit these later on, so handy too keep those seperate.
@@ -414,8 +475,7 @@ class PolygonData(object):
         self._inner_points = np.vstack((self._inner_points, xy))
         for a in attrs:
             self._inner_attrs[a] = np.concatenate((self._inner_attrs[a], attrs[a]))
-        
-        
+
     @property
     def inner_point_indices(self):
         # Return indices of inner_points in self.points
@@ -428,42 +488,46 @@ class PolygonData(object):
     @property
     def points(self):
         return np.vstack((self._points, self._inner_points))
-    
+
     @property
     def segments(self):
         return self._segments
-    
+
     @property
     def holes(self):
         return self._holes
-    
+
     def get_ring(self, i):
         # Return a view of the i'th ring
         if i >= len(self._ring_slices):
             raise ValueError("Too large index, not that many rings.")
         i0, i1 = self._ring_slices[i]
-        return self._points[i0 : i1]
-    
+        return self._points[i0: i1]
+
     def get_rings(self):
         return [self._points[i0: i1] for i0, i1 in self._ring_slices]
-    
+
     def attribute(self, a):
         # return a stacked attributte
         return np.concatenate((self._attrs[a], self._inner_attrs[a]))
-    
+
     def thin_inner_points(self, M):
         # Mask M must be relative to self._inner_pts
         self._inner_points = self._inner_points[M]
         for a in self._inner_attrs:
             if self._inner_attrs[a].shape[0] > 0:
                 self._inner_attrs[a] = self._inner_attrs[a][M]
-        
 
-        
+
 class PSLGTriangulation(TriangulationBase):
-    """TriangulationBase implementation. Triangulate a polygon / graph"""
+    """
+    TriangulationBase implementation. Triangulate a polygon / graph.
+    Requires triangle by Jonathan Richard Shewchuk.
+    """
 
     def __init__(self, points, segments, hole_points=None, cs=-1):  # low cs will speed up point in polygon
+        if not HAS_TRIANGLE:
+            raise Exception("Requires that libtripy is built against triangle!")
         self.segments = np.require(segments, dtype=np.int32, requirements=['A', 'O', 'C'])
         self.points = np.require(points, dtype=np.float64, requirements=['A', 'O', 'C'])
         if (hole_points is not None) and hole_points.shape[0] > 0:
@@ -499,14 +563,14 @@ class PSLGTriangulation(TriangulationBase):
             self.ntrig)
         if self.index is None:
             raise Exception("Failed to build index...")
-    
+
     def inner_points(self):
         # Return a mask indicating whether a point is not on a segment
         M = np.ones(self.points.shape[0], dtype=np.bool)
         M[self.segments[:, 0]] = 0
         M[self.segments[:, 1]] = 0
         return M
-    
+
     def points_in_polygon(self, xy):
         # based on what the index cell size is, this can be really fast and very robust!
         I = self.find_triangles(xy)

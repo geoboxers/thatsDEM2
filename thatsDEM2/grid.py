@@ -13,9 +13,11 @@
 # ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
 # OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 #
-######################################
-# Grid class below  - just a numpy array and some metadata + some usefull methods
-####################################
+"""
+Contains a grid abstraction class and some useful grid construction methods.
+Facilitates working with numpy arrays and GDAL datasources in combination.
+silyko, June 2016.
+"""
 import numpy as np
 import os
 from osgeo import gdal, osr
@@ -27,9 +29,8 @@ except:
     HAS_NDIMAGE = False
 else:
     HAS_NDIMAGE = True
+from thatsDEM2.shared_libraries import *
 LOG = logging.getLogger(__name__)
-LIBDIR = os.path.realpath(os.path.join(os.path.dirname(__file__), "..", "lib"))
-LIBNAME = "libgrid"
 XY_TYPE = np.ctypeslib.ndpointer(dtype=np.float64, flags=['C', 'O', 'A', 'W'])
 GRID_TYPE = np.ctypeslib.ndpointer(dtype=np.float64, ndim=2, flags=['C', 'O', 'A', 'W'])
 GRID32_TYPE = np.ctypeslib.ndpointer(dtype=np.float32, ndim=2, flags=['C', 'O', 'A', 'W'])
@@ -38,11 +39,9 @@ Z_TYPE = np.ctypeslib.ndpointer(dtype=np.float64, ndim=1, flags=['C', 'O', 'A', 
 UINT32_TYPE = np.ctypeslib.ndpointer(dtype=np.uint32, ndim=1, flags=['C', 'O', 'A', 'W'])
 INT32_GRID_TYPE = np.ctypeslib.ndpointer(dtype=np.int32, ndim=2, flags=['C', 'O', 'A', 'W'])
 INT32_TYPE = np.ctypeslib.ndpointer(dtype=np.int32, ndim=1, flags=['C', 'O', 'A', 'W'])
-LP_CDOUBLE = ctypes.POINTER(ctypes.c_double)
-LP_CULONG = ctypes.POINTER(ctypes.c_ulong)
-LP_CINT = ctypes.POINTER(ctypes.c_int)
 GEO_REF_ARRAY = ctypes.c_double * 4
-lib = np.ctypeslib.load_library(LIBNAME, LIBDIR)
+# Load the library
+lib = np.ctypeslib.load_library(LIB_GRID, LIB_DIR)
 # void wrap_bilin(double *grid, double *xy, double *out, double *geo_ref,
 # double nd_val, int nrows, int ncols, int npoints)
 
@@ -101,7 +100,7 @@ lib.binary_fill_gaps.restype = None
 
 # unsigned long walk_mask(char *M, int *start, int *end, int *path, unsigned long buf_size, int nrows, int ncols);
 lib.walk_mask.argtypes = [MASK2D_TYPE, INT32_TYPE, INT32_TYPE, INT32_GRID_TYPE, ctypes.c_ulong] + [ctypes.c_int] * 2
-lib.walk_mask.restype = ctypes.c_ulong;
+lib.walk_mask.restype = ctypes.c_ulong
 
 # COMPRESSION OPTIONS FOR SAVING GRIDS AS GTIFF
 DCO = ["TILED=YES", "COMPRESS=LZW"]
@@ -138,7 +137,8 @@ def bilinear_interpolation(grid, xy, nd_val, geo_ref=None):
         grid: numpy array (of type numpy.float64)
         xy: numpy array of shape (n,2) (and dtype numpy.float64). The points to interpolate values for.
         nd_val: float, output no data value.
-        geo_ref: iterable of floats: (xulcenter, hor_cellsize, yulcenter, vert_cellsize). NOT GDAL style georeference. If None xy is assumed to be in array coordinates.
+        geo_ref: iterable of floats: (xulcenter, hor_cellsize, yulcenter, vert_cellsize).
+                 NOT GDAL style georeference. If None xy is assumed to be in array coordinates.
     Returns:
         A 1d, float64 numpy array containing the interpolated values.
     """
@@ -173,6 +173,7 @@ def masked_mean_filter(dem, mask, rad=2):
     out = np.copy(dem)
     lib.masked_mean_filter(dem, out, mask, rad, dem.shape[0], dem.shape[1])
     return out
+
 
 def walk_mask(M, start, end):
     start = np.asarray(start, dtype=np.int32)
@@ -224,7 +225,8 @@ def resample_grid(grid, nd_val, geo_ref_in, geo_ref_out, ncols_out, nrows_out):
 # slow, but flexible method designed to calc. some algebraic quantity of q's within every single cell
 def make_grid(xy, q, ncols, nrows, georef, nd_val=-9999, method=np.mean, dtype=None):  # gdal-style georef
     """
-    Apply a function on scattered data (xy) to produce a regular grid. Will apply the supplied method on the points that fall within each output cell.
+    Apply a function on scattered data (xy) to produce a regular grid.
+    Will apply the supplied method on the points that fall within each output cell.
     Args:
         xy: numpy array of shape (n,2).
         q: 1d numpy array. The value to 'grid'.
@@ -297,9 +299,9 @@ def grid_most_frequent_value(xy, q, ncols, nrows, georef, v1=None, v2=None, nd_v
         v1 = q.min()
     if v2 is None:
         v2 = q.max()
-    size = (v2-v1+1)
-    if size < 1 or size>20000:
-        raise ValueError("Invalid range: %d" %size)
+    size = (v2 - v1 + 1)
+    if size < 1 or size > 20000:
+        raise ValueError("Invalid range: %d" % size)
     lib.grid_most_frequent_value(B, q, out, v1, v2, nd_val, B.shape[0])
     return Grid(out, georef, nd_val)
 
@@ -354,6 +356,13 @@ class Grid(object):
     """
 
     def __init__(self, arr, geo_ref, nd_val=None, srs=None):
+        """
+        Args:
+            arr: Numpy 2d array
+            geo_ref: GDAL style georeference (left_edge, cx, 0, top_edge, 0, cy)
+            nd_val: No data value
+            srs: GDAL srs wkt (as returned by osr.SpatialReference.ExportToWkt())
+        """
         self.grid = arr
         self.geo_ref = np.array(geo_ref)
         self.nd_val = nd_val
@@ -452,7 +461,7 @@ class Grid(object):
         cell_georef = [self.geo_ref[0] + 0.5 * cx, cx, self.geo_ref[3] + 0.5 * cy, -cy]
         return bilinear_interpolation(self.grid, xy, nd_val, cell_georef)
 
-    def warp(self, dst_srs, cx = None, cy=None, out_extent=None, resample_method=gdal.GRA_Bilinear):
+    def warp(self, dst_srs, cx=None, cy=None, out_extent=None, resample_method=gdal.GRA_Bilinear):
         """
         Warp to dst_srs (given as a GDAL wkt definition)
         Args:
@@ -510,7 +519,7 @@ class Grid(object):
         rc = gdal.ReprojectImage(src_ds, dst_ds, self.srs, dst_srs, resample_method)
         assert rc == 0
         grid_out = dst_ds.ReadAsArray()
-        return Grid(grid_out, new_georef, self.nd_val, dst_srs) 
+        return Grid(grid_out, new_georef, self.nd_val, dst_srs)
 
     @classmethod
     def npy2gdaltype(cls, npy_dtype):
@@ -523,7 +532,7 @@ class Grid(object):
             return gdal.GDT_Int32
         elif npy_dtype == np.uint32:
             return gdal.GDT_UInt32
-        elif npy_dtype == np.bool or self.grid.dtype == np.uint8:
+        elif npy_dtype == np.bool or npy_dtype == np.uint8:
             return gdal.GDT_Byte
         elif npy_dtype == np.uint16:
             return gdal.GDT_Uint16
@@ -598,7 +607,7 @@ class Grid(object):
         # taking care of revered axis since cy<0
         dy = image.filters.correlate(self.grid, kernel.T) * scale_y
         # The normal vector looks like (-dx,-dy,1) - in array coords: (-dx,dy,1)
-        X = np.sqrt(dx**2 + dy**2 + 1)  # the norm of the normal
+        X = np.sqrt(dx ** 2 + dy ** 2 + 1)  # the norm of the normal
         # calculate the dot product and normalise - should be in range -1 to 1 -
         # less than zero means black, which here should translate to the value 1
         # as a ubyte.

@@ -1,5 +1,4 @@
 *.pyc
 build/
-lib/
-src/triangle/store/
+thatsDEM2/lib/
 .sconsign.dblite

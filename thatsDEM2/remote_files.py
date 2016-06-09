@@ -19,6 +19,7 @@ import subprocess
 import sys
 import time
 
+
 def is_remote(path):
     """Determine whether a file is in a remote location (which can be handled) based on prefix of connection string."""
     for token in ["s3://", "http://", "https://"]:  # add
