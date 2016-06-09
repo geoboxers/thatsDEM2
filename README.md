@@ -18,7 +18,7 @@ Will require Mingw64 on Windows (setup a proper environment or run from a Mingw6
 
 ```
 Use debug=1 for a debug build.
-The triangulation engine can use triangle by Jonathan Richard Schewchuk.
+The triangulation engine can use triangle by Jonathan Richard Shewchuk.
 In order to enable that, you'll need to download triangle.zip from http://www.netlib.org/voronoi/
 and patch the source (for 64-bit systems) using the included utility, patch_triangle.py:
 

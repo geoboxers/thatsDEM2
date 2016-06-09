@@ -14,7 +14,7 @@
 # OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 """
 Triangulation classes.
-Can use triangle by Jonathan Schewchuk if c extension is built against that.
+Can use triangle by Jonathan Shewchuk if c extension is built against that.
 Speedier implementation of finding simplices, compared to scipy.spatial.Delaunay.
 silyko, June 2016.
 """
@@ -323,7 +323,7 @@ class TriangulationBase(object):
         return out
 
 
-class SchewchukTriangulation(TriangulationBase):
+class ShewchukTriangulation(TriangulationBase):
     """
     TriangulationBase implementation. Will construct a triangulation and an index of triangles.
     Requires triangle by Jonathan Richard Shewchuk.
@@ -391,12 +391,12 @@ class QhullTriangulation(TriangulationBase):
     def get_triangle_centers(self):
         T = self.delaunay.simplices
         p = self.points[T[:, 0]]
-        p += self.point[T[:, 1]]
+        p += self.points[T[:, 1]]
         p += self.points[T[:, 2]]
         return p / 3
 
 if HAS_TRIANGLE:
-    Triangulation = SchewchukTriangulation
+    Triangulation = ShewchukTriangulation
 else:
     Triangulation = QhullTriangulation
 
