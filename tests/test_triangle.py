@@ -33,7 +33,7 @@ class TestTriangle(unittest.TestCase):
         self.tri.optimize_index()
 
     def test_find_triangles(self):
-        LOG.info("Testing Find triangles.")
+        LOG.info("Testing find_triangles.")
         xmin, ymin = self.points.min(axis=0)
         xmax, ymax = self.points.max(axis=0)
         dx = (xmax - xmin)
@@ -47,6 +47,12 @@ class TestTriangle(unittest.TestCase):
         LOG.info("Finding %d simplices: %.4f s, pr. 1e6: %.4f s" % (self.n2, t3, t3 / self.n2 * 1e6))
         self.assertGreaterEqual(T.min(), 0)
         self.assertLess(T.max(), self.tri.ntrig)
+    
+    def test_find_triangles2(self):
+        LOG.info("Testing find_triangles (centers).")
+        centers = self.tri.get_triangle_centers()
+        inds = self.tri.find_triangles(centers)
+        self.assertTrue((inds == np.arange(0, centers.shape[0])).all())
 
     def test_interpolation(self):
         z = np.random.rand(self.n1) * 100

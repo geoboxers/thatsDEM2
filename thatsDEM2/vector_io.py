@@ -20,6 +20,8 @@
 from osgeo import ogr, osr, gdal
 import numpy as np
 import time
+import logging
+LOG = logging.getLogger(__name__)
 
 # placeholder for tile-wkt -
 # this token will be replaced by actual wkt in run time.
@@ -256,7 +258,7 @@ def get_geometries(cstr, layername=None, layersql=None, extent=None, explode=Tru
         # Not needed when filtering is taken care of in the layersql.
         layer.SetSpatialFilterRect(*extent)
     nf = layer.GetFeatureCount()
-    print("%d feature(s) in layer %s" % (nf, layer.GetName()))
+    LOG.info("%d feature(s) in layer %s" % (nf, layer.GetName()))
     geoms = []
     for feature in layer:
         geom = feature.GetGeometryRef().Clone()
@@ -275,7 +277,7 @@ def get_geometries(cstr, layername=None, layersql=None, extent=None, explode=Tru
     layer = None
     ds = None
     t2 = time.clock()
-    print("Fetching geoms took %.3f s" % (t2 - t1))
+    LOG.debug("Fetching geoms took %.3f s" % (t2 - t1))
     return geoms
 
 

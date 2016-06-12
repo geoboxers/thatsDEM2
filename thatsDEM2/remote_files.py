@@ -18,6 +18,8 @@ import tempfile
 import subprocess
 import sys
 import time
+import logging
+LOG = logging.getLogger(__name__)
 
 
 def is_remote(path):
@@ -57,7 +59,7 @@ def get_local_file(remote_path, retries=0, wait=0):
             stdout, stderr = prc.communicate()
             rc = prc.poll()
             if rc != 0:
-                print(stderr)
+                LOG.error(stderr)
                 raise Exception("Bad return code from " + cmd + " : {0:d}".format(rc))
             assert(os.path.exists(f.name))
         except Exception as e:
