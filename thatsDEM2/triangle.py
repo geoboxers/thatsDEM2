@@ -362,11 +362,11 @@ class QhullTriangulation(TriangulationBase):
         self.delaunay = Delaunay(self.points)
         # for old scipy version:
         if hasattr(self.delaunay, "simplices"):
-            simplices = self.delaunay.simplices
+            self.tri_array = self.delaunay.simplices
         else:
-            simplices = self.delaunay.vertices
-        self.vertices = simplices.ctypes.data_as(LP_CINT)
-        self.ntrig = simplices.shape[0]
+            self.tri_array = self.delaunay.vertices
+        self.vertices = self.tri_array.ctypes.data_as(LP_CINT)
+        self.ntrig = self.tri_array.shape[0]
         self.index = lib.build_index(
             points.ctypes.data_as(LP_CDOUBLE),
             self.vertices,
@@ -389,7 +389,7 @@ class QhullTriangulation(TriangulationBase):
         return self.delaunay.simplices
 
     def get_triangle_centers(self):
-        T = self.delaunay.simplices
+        T = self.tri_array
         p = self.points[T[:, 0]]
         p += self.points[T[:, 1]]
         p += self.points[T[:, 2]]
