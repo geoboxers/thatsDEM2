@@ -195,6 +195,17 @@ def just_burn_layer(layer, georef, shape, attr=None, nd_val=0,
     It is the callers responsibility to supply a properly filtered layer,
     e.g. by setting a client side spatial filter, or by using a dataprovider
     side filter, e.g. in layersql.
+    Args:
+        layer: ogr.Layer
+        georef: GDAL style georeference
+        shape: numpy output shape (nrows, ncols)
+        attr: Attribute to burn
+        nd_val: No data / prefill value
+        dtype: Output numpy datatype
+        all_touched: Option to GDAL - burn all touched cells.
+        burn3d: Burn z values for 3d geometries (either this or attr)
+        output_srs: osr.SpatialReference instance -
+                    will warp input geometries to this projection if layer has spatial reference.
     Returns:
         A numpy array of the requested dtype and shape.
     """
@@ -311,10 +322,10 @@ def polygonize(M, georef, srs=None):
     Args:
         M: a numpy 'mask' array.
         georef: GDAL style georeference of mask.
+        srs: osr.SpatialReference instance
     Returns:
         OGR datasource, OGR layer
     """
-    # TODO: supply srs
     # polygonize an input Mask (bool or uint8 -todo, add more types)
     dst_fieldname = 'DN'
     # create a GDAL memory raster

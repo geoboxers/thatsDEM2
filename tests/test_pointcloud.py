@@ -13,7 +13,7 @@ import numpy as np
 import tempfile
 import json
 import ctypes
-from thatsDEM2 import pointcloud
+from thatsDEM2 import pointcloud, osr_utils
 
 LOG = logging.getLogger(__name__)
 
@@ -297,6 +297,17 @@ class TestPointcloud(unittest.TestCase):
         mc = pc.mean_3d_filter(1, attr="c")
         # LOG.info("mc is " + str(mc))
         self.assertTrue((mc == 5).all())
+
+    def test_warp2d(self):
+        LOG.info("Test pointcloud.warp2d")
+        pc = pointcloud.Pointcloud.from_array(np.ones((10, 10)), [512200, 100, 0, 6143200, 0, -100])
+        pc.set_srs(osr_utils.from_epsg(25832))
+        pc.warp2d(osr_utils.from_epsg(4326))
+        x1, y1, x2, y2 = pc.bounds
+        self.assertAlmostEqual(x1, 9.19355818984)
+        self.assertAlmostEqual(y1, 55.4262913596)
+        pc_copy = pc.copy()
+        self.assertTrue(pc_copy.srs.IsSame(pc.srs))
 
     def _get_named_temp_file(self, ext):
         f = tempfile.NamedTemporaryFile(suffix=ext, delete=False)

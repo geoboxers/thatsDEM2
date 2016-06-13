@@ -124,7 +124,8 @@ def from_gdal(path, upcast=False):
     if upcast:
         a = a.astype(np.float64)
     geo_ref = ds.GetGeoTransform()
-    srs = ds.GetProjection()
+    wkt = ds.GetProjection()
+    srs = osr.SpatialRefernece(wkt) if wkt else None
     nd_val = ds.GetRasterBand(1).GetNoDataValue()
     ds = None
     return Grid(a, geo_ref, nd_val, srs=srs)
@@ -223,7 +224,7 @@ def resample_grid(grid, nd_val, geo_ref_in, geo_ref_out, ncols_out, nrows_out):
 
 
 # slow, but flexible method designed to calc. some algebraic quantity of q's within every single cell
-def make_grid(xy, q, ncols, nrows, georef, nd_val=-9999, method=np.mean, dtype=None):  # gdal-style georef
+def make_grid(xy, q, ncols, nrows, georef, nd_val=-9999, method=np.mean, dtype=None, srs=None):  # gdal-style georef
     """
     Apply a function on scattered data (xy) to produce a regular grid.
     Will apply the supplied method on the points that fall within each output cell.
@@ -272,10 +273,10 @@ def make_grid(xy, q, ncols, nrows, georef, nd_val=-9999, method=np.mean, dtype=N
     assert ((arr_coords[i0] == arr_coords[-1]).all())
     final_val = method(q[i0:])
     out[row, col] = final_val
-    return Grid(out, georef, nd_val)
+    return Grid(out, georef, nd_val, srs=srs)
 
 
-def grid_most_frequent_value(xy, q, ncols, nrows, georef, v1=None, v2=None, nd_val=-9999):
+def grid_most_frequent_value(xy, q, ncols, nrows, georef, v1=None, v2=None, nd_val=-9999, srs=None):
     """
     Grid the most frequent value (q) for the points (xy) that fall within each cell.
     Grid extent specified via ncols, nrows and GDAL style georeference.
@@ -303,7 +304,7 @@ def grid_most_frequent_value(xy, q, ncols, nrows, georef, v1=None, v2=None, nd_v
     if size < 1 or size > 20000:
         raise ValueError("Invalid range: %d" % size)
     lib.grid_most_frequent_value(B, q, out, v1, v2, nd_val, B.shape[0])
-    return Grid(out, georef, nd_val)
+    return Grid(out, georef, nd_val, srs=srs)
 
 
 def user2array(georef, xy):
@@ -366,6 +367,8 @@ class Grid(object):
         self.grid = arr
         self.geo_ref = np.array(geo_ref)
         self.nd_val = nd_val
+        if srs is not None and not isinstance(srs, osr.SpatialReference):
+            raise TypeError("srs must be osr.SpatialReference")
         self.srs = srs
         # and then define some useful methods...
 
@@ -465,7 +468,7 @@ class Grid(object):
         """
         Warp to dst_srs (given as a GDAL wkt definition)
         Args:
-            dst_srs: GDAL wkt srs definition (e.g. form osr.SpatialReference.ExportToWkt())
+            dst_srs: osr.SpatialReference
             cx: horisontal output cellsize (calculate if None)
             cy: vertical output cellsize (>0, calculate if None)
             out_extent: (xmin, ymin, xmax, ymax) in output coord sys. (Will be calculated if None)
@@ -475,11 +478,13 @@ class Grid(object):
         """
         if self.srs is None:
             raise ValueError("Needs a srs definition for self.")
+        if not isinstance(dst_srs, osr.SpatialReference):
+            raise TypeError("srs must be osr.SpatialReference")
         src_ds = self.as_gdal_dataset("in", "MEM")
         # calculate dest georef and size
         extent = map(float, self.extent)
-        source_srs = osr.SpatialReference(self.srs)
-        target_srs = osr.SpatialReference(dst_srs)
+        source_srs = self.srs
+        target_srs = dst_srs
         transform = osr.CoordinateTransformation(source_srs, target_srs)
         new_corners = ((extent[0], extent[1]), (extent[0], extent[3]),
                        (extent[2], extent[1]), (extent[2], extent[3]))
@@ -512,14 +517,14 @@ class Grid(object):
         mem_drv = src_ds.GetDriver()
         dst_ds = mem_drv.Create("out", ncols, nrows, 1, self.npy2gdaltype(self.dtype))
         dst_ds.SetGeoTransform(new_georef)
-        dst_ds.SetProjection(dst_srs)
+        dst_ds.SetProjection(dst_srs.ExportToWkt())
         band = dst_ds.GetRasterBand(1)
         band.SetNoDataValue(self.nd_val)
         band.WriteArray(np.ones((nrows, ncols), dtype=self.dtype) * self.nd_val)
-        rc = gdal.ReprojectImage(src_ds, dst_ds, self.srs, dst_srs, resample_method)
+        rc = gdal.ReprojectImage(src_ds, dst_ds, self.srs.ExportToWkt(), dst_srs.ExportToWkt(), resample_method)
         assert rc == 0
         grid_out = dst_ds.ReadAsArray()
-        return Grid(grid_out, new_georef, self.nd_val, dst_srs)
+        return Grid(grid_out, new_georef, self.nd_val, srs=dst_srs)
 
     @classmethod
     def npy2gdaltype(cls, npy_dtype):
@@ -562,7 +567,9 @@ class Grid(object):
         if srs is None:  # will override self.srs which is default if set
             srs = self.srs
         if srs is not None:
-            dst_ds.SetProjection(srs)
+            if not isinstance(srs, osr.SpatialReference):
+                raise TypeError("srs must be osr.SpatialReference")
+            dst_ds.SetProjection(srs.ExportToWkt())
         band = dst_ds.GetRasterBand(1)
         if self.nd_val is not None:
             band.SetNoDataValue(self.nd_val)

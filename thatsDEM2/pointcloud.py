@@ -22,9 +22,10 @@ import os
 import ctypes
 import numpy as np
 from math import ceil
-from osgeo import gdal, ogr
+from osgeo import gdal, ogr, osr
 import thatsDEM2.triangle as triangle
 import thatsDEM2.array_geometry as array_geometry
+import thatsDEM2.osr_utils as osr_utils
 import thatsDEM2.vector_io as vector_io
 # Should perhaps be moved to method in order to speed up import...
 import thatsDEM2.grid as grid
@@ -89,6 +90,9 @@ def empty_like(pc):
 class Pointcloud(object):
     """
     Pointcloud class constructed from a xy and a z array.
+    z will usually be the third spatial dimension,
+    but can really be any additional dimension/attribute as many methods work in 2 (and a half) D.
+    ----
     Additional properties given in pc_attrs must be 1d numpy arrays.
     Pointcloud properties as well as xy and z will be directly modifiable by design,
     for example like pc.xy += 1.35 and pc.c[pc.c == 4] = 5,
@@ -98,7 +102,7 @@ class Pointcloud(object):
     with Pointcloud.clear_derived_attrs()
     """
 
-    def __init__(self, xy, z, **pc_attrs):
+    def __init__(self, xy, z, srs=None, **pc_attrs):
         xy = self._validate_array("xy", xy, check_size=False)
         z = self._validate_array("z", z, check_size=False)
         if z.shape[0] != xy.shape[0]:
@@ -107,6 +111,7 @@ class Pointcloud(object):
         self.__pc_attrs = {"xy", "z"}
         self.xy = xy
         self.z = z
+        self.set_srs(srs)  # Can be an osr.SpatialReference or None
         # Derived attrs
         self.clear_derived_attrs()
         # store the additional attributes
@@ -140,7 +145,14 @@ class Pointcloud(object):
         new_instance = subclass(self.xy, self.z)
         for a in self.attributes:
             new_instance.set_attribute(a, self.get_array(a))
+        if self.srs is not None:
+            new_instance.set_srs(self.srs.Clone())
         return new_instance
+
+    def set_srs(self, srs):
+        if (srs is not None) and not isinstance(srs, osr.SpatialReference):
+            raise TypeError("srs must be an osr.SpatialReference")
+        self.srs = srs
 
     def copy(self):
         """
@@ -160,9 +172,9 @@ class Pointcloud(object):
             name: name of attribute
             value: array like, must have dimension 1 and same size as self.
         """
-        if name in ("xy", "z"):
+        if name in ("xy", "z", "srs"):
             raise ValueError(
-                "Name of an additional attribute cannot be xy or z")
+                "Name of an additional attribute cannot be xy, z or srs")
 
         self.set_array(name, value)
 
@@ -579,11 +591,11 @@ class Pointcloud(object):
             if method == "triangulation":
                 g = self.triangulation.make_grid(
                     val, ncols, nrows, x1, cx, y2, cy, nd_val, return_triangles=False)
-                return grid.Grid(g, geo_ref, nd_val)
+                return grid.Grid(g, geo_ref, nd_val, self.srs)
             else:
                 g, t = self.triangulation.make_grid(
                     val, ncols, nrows, x1, cx, y2, cy, nd_val, return_triangles=True)
-            return grid.Grid(g, geo_ref, nd_val), grid.Grid(t, geo_ref, nd_val)
+            return grid.Grid(g, geo_ref, nd_val, srs=self.srs), grid.Grid(t, geo_ref, nd_val, srs=self.srs)
         elif method == "cellcount":  # density grid
             arr_coords = ((self.xy - (geo_ref[0], geo_ref[3])) /
                           (geo_ref[1], geo_ref[5])).astype(np.int32)
@@ -597,13 +609,13 @@ class Pointcloud(object):
             bins = np.arange(0, ncols * nrows + 1)
             h, b = np.histogram(B, bins)
             h = h.reshape((nrows, ncols))
-            return grid.Grid(h, geo_ref, 0)  # zero always nodata value here...
+            return grid.Grid(h, geo_ref, 0, self.srs)  # zero always nodata value here...
         elif method == "most_frequent":
             # define method which takes the most frequent value in a cell...
             # could be only mean...
             val = np.require(self.get_array(attr), dtype=np.int32)
             g = grid.grid_most_frequent_value(
-                self.xy, val, ncols, nrows, geo_ref, nd_val=nd_val)
+                self.xy, val, ncols, nrows, geo_ref, nd_val=nd_val, srs=self.srs)
             return g
         elif method in ("density_filter", "idw_filter", "max_filter",
                         "min_filter", "mean_filter", "median_filter", "var_filter"):
@@ -619,7 +631,7 @@ class Pointcloud(object):
             else:
                 z = filter_func(srad, xy=pts, nd_val=nd_val,
                                 attr=attr).reshape((nrows, ncols))
-            return grid.Grid(z, geo_ref, nd_val)
+            return grid.Grid(z, geo_ref, nd_val, srs=self.srs)
         elif hasattr(method, "__call__"):
             val = self.get_array(attr)
             return grid.make_grid(self.xy, val, ncols, nrows, geo_ref, nd_val=nd_val, method=method)
@@ -731,8 +743,42 @@ class Pointcloud(object):
         return array_geometry.get_triangle_geometry(
             self.xy, self.z, self.triangulation.vertices, self.triangulation.ntrig)
 
-    def warp(self, sys_in, sys_out):
-        pass  # TODO - use TrLib
+    def warp2d(self, srs_out):
+        """
+        Warp xy only - e.g. when same input and output datum - to srs_out.
+        Requires that self.srs is set.
+        Modifies self in place!
+        Args:
+            srs_out: An osr.SpatialReference
+        """
+        # Wasting memory here as we are going thru the osr interface,
+        # which seems to do a np.ndarray.tolist()
+        if self.srs is None:
+            raise ValueError("Set srs for self first!")
+        transform = osr.CoordinateTransformation(self.srs, srs_out)
+        self._set_array("xy", osr_utils.transform_array(transform, self.xy))
+        self.clear_derived_attrs()
+        self.srs = srs_out
+
+    def warp3d(self, srs_out):
+        """
+        Full 3d transformation - e.g. for different input and output datums - to srs_out.
+        Requires that self.srs is set.
+        Make sure you know what you (and PROJ4) are doing!
+        Modifies self in place.
+        Args:
+            srs_out: An osr.SpatialReference
+        """
+        # Wasting memory here as we are going thru the osr interface,
+        # which seems to do a np.ndarray.tolist()
+        if self.srs is None:
+            raise ValueError("Set srs for self first!")
+        transform = osr.CoordinateTransformation(self.srs, srs_out)
+        xyz = osr_utils.transform_array(transform, np.column_stack((self.xy, self.z)))
+        self._set_array("xy", xyz[:, :2])
+        self._set_array("z", xyz[:, 2])
+        self.clear_derived_attrs()
+        self.srs = srs_out
 
     def affine_transformation(self, R=None, T=None):
         """
@@ -768,7 +814,7 @@ class Pointcloud(object):
         """
         Warp to ellipsoidal heights. Modify z 'in place' by adding geoid height.
         Args:
-            geoid: A geoid grid - grid.Grid instance.
+            geoid: A geoid grid - grid.Grid instance (in same srs as self).
         """
         # warp to ellipsoidal heights
         toE = geoid.interpolate(self.xy)
@@ -779,7 +825,7 @@ class Pointcloud(object):
         """
         Warp to orthometric heights. Modify z 'in place' by subtracting geoid height.
         Args:
-            geoid: A geoid grid - grid.Grid instance.
+            geoid: A geoid grid - grid.Grid instance (in same srs as self).
         """
         # warp to orthometric heights. z bounds not stored, so no need to
         # recalculate.
