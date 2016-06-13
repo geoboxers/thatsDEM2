@@ -84,6 +84,8 @@ def empty_like(pc):
     for a in pc.attributes:
         array = pc.get_array(a)
         out.set_attribute(a, np.empty((0,), dtype=array.dtype))
+    if pc.srs is not None:
+        out.set_srs(pc.srs.Clone())
     return out
 
 
@@ -785,7 +787,7 @@ class Pointcloud(object):
         Modify points in place by an affine transformation xyz=R*xyz+T.
         Args:
             R: 3 times 3 array (scaling, rotation, etc.)
-            T: Translation vector (dx,dy,dz)
+            T: Translation vector (dx, dy, dz)
         """
         # Wasting a bit of memory here to keep it simple!
         self.clear_derived_attrs()
