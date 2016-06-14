@@ -82,3 +82,19 @@ g2 = pc2.get_grid(ncols=1000, nrows=1000, method="idw_filter", srad=2)
 h2 = g2.get_hillshade()
 h2.save("hillshade.tif", dco=["TILED=YES", "COMPRESS=LZW"])
 ```
+
+### Reprojection and resampling ###
+```python
+from thatsDEM2 import osr_utils, pointcloud
+srs = osr_utils.from_epsg(4326)  # WGS84
+# construct pointcloud from some lonlats (2d) and (1d) data 
+pc = pointcloud.Pointcloud(lonlats, data)
+# add some other attribute
+pc.set_attribute("red", red_array)
+pc.warp2d(osr_utils.from_proj4("+proj=utm +zone=32 +towgs84=0,0,0 +ellps=GRS80"))
+pc.sort_spatially(srad)
+# 'resample' using mean_filter
+gridded_data = pc.get_grid(ncols=1000, nrows=1000, method="mean_filter", srad=srad)
+# we can resample another attribute as well
+red_band = pc.get_grid(ncols=1000, nrows=1000, method="idw_filter", srad=srad, attr="red")
+```
