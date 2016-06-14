@@ -18,8 +18,7 @@ Can use triangle by Jonathan Shewchuk if c extension is built against that.
 Speedier implementation of finding simplices, compared to scipy.spatial.Delaunay.
 silyko, June 2016.
 """
-import sys
-import os
+
 import ctypes
 import numpy as np
 from thatsDEM2.shared_libraries import *
@@ -30,7 +29,7 @@ lib = ctypes.cdll.LoadLibrary(LIB_TRIPY)
 try:
     # Args and return types of c functions. Corresponds to a header file.
     lib.use_triangle.restype = LP_CINT
-    lib.use_triangle.argtypes = [XY_TYPE, ctypes.c_int, LP_CINT]
+    lib.use_triangle.argtypes = [LP_CDOUBLE, ctypes.c_int, LP_CINT]
     # int *use_triangle_pslg(double *xy, int *segments, double *holes, int np, int nseg, int nholes, int *nt)
     lib.use_triangle_pslg.restype = LP_CINT
     lib.use_triangle_pslg.argtypes = [
@@ -358,7 +357,9 @@ class QhullTriangulation(TriangulationBase):
 
     def __init__(self, points, cs=-1):
         self.validate_points(points)
-        self.points = points
+        # For precision reasons we seem to need to transform to center of mass
+        self.cm = points.mean(axis=0)
+        self.points = points - self.cm
         self.delaunay = Delaunay(self.points)
         # for old scipy version:
         if hasattr(self.delaunay, "simplices"):
@@ -368,7 +369,7 @@ class QhullTriangulation(TriangulationBase):
         self.vertices = self.tri_array.ctypes.data_as(LP_CINT)
         self.ntrig = self.tri_array.shape[0]
         self.index = lib.build_index(
-            points.ctypes.data_as(LP_CDOUBLE),
+            self.points.ctypes.data_as(LP_CDOUBLE),
             self.vertices,
             cs,
             points.shape[0],
@@ -383,17 +384,33 @@ class QhullTriangulation(TriangulationBase):
             self.index = None
 
     def find_triangles_scipy(self, xy):
-        return self.delaunay.find_simplex(xy)
+        return self.delaunay.find_simplex(xy - self.cm)
 
     def get_triangles(self):
-        return self.delaunay.simplices
+        return self.delaunay.tri_array
 
     def get_triangle_centers(self):
         T = self.tri_array
         p = self.points[T[:, 0]]
         p += self.points[T[:, 1]]
         p += self.points[T[:, 2]]
-        return p / 3
+        return p / 3 + self.cm
+
+    def make_grid(self, z_base, ncols, nrows, xl, cx, yu, cy, nd_val=-999, return_triangles=False):
+        # We need to shift towards center of mass here first.
+        return super(QhullTriangulation, self).make_grid(z_base, ncols, nrows, xl - self.cm[0],
+                                                         cx, yu - self.cm[1], cy, nd_val, return_triangles)
+
+    def make_grid_low(self, *args, **kwargs):
+        raise NotImplementedError()
+
+    def find_triangles(self, xy, mask=None):
+        # We need to shift towards center of mass here first.
+        return super(QhullTriangulation, self).find_triangles(xy - self.cm, mask)
+
+    def interpolate(self, z_base, xy_in, nd_val=-999, mask=None):
+        return super(QhullTriangulation, self).interpolate(z_base, xy_in - self.cm, nd_val, mask)
+
 
 if HAS_TRIANGLE:
     Triangulation = ShewchukTriangulation
