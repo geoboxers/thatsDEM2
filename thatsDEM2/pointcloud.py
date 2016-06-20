@@ -23,7 +23,13 @@ import ctypes
 import numpy as np
 from math import ceil
 from osgeo import gdal, ogr, osr
-import thatsDEM2.triangle as triangle
+try:
+    import thatsDEM2.triangle as triangle
+except ImportError:
+    # prereqs for triangle might not be installed
+    HAS_TRIANGLE = False
+else:
+    HAS_TRIANGLE = True
 import thatsDEM2.array_geometry as array_geometry
 import thatsDEM2.osr_utils as osr_utils
 import thatsDEM2.vector_io as vector_io
@@ -46,6 +52,10 @@ else:
 
 
 class InvalidArrayError(Exception):
+    pass
+
+
+class NotAvailableError(Exception):
     pass
 
 
@@ -482,6 +492,8 @@ class Pointcloud(object):
         Raises:
             ValueError: If not at least 3 points in pointcloud
         """
+        if not HAS_TRIANGLE:
+            raise NotAvailableError("The triangle module does not seem to be available!")
         if self.triangulation is None:
             if self.xy.shape[0] > 2:
                 self.triangulation = triangle.Triangulation(self.xy)
