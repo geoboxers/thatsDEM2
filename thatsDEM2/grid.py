@@ -350,6 +350,47 @@ def intersect_grid_extents(georef1, shape1, georef2, shape2):
     return (rs1, cs1), (rs2, cs2)
 
 
+def create_gdal_ds(cstr, geo_ref, data_type, shape, fmt="GTiff", nd_val=None, dco=None, srs=None):
+    """
+    Create a (1 band) GDAL raster datasource.
+    Args:
+       cstr: Connection string / path to datasource.
+       geo_ref: GDAL style georeference (list of len 6).
+       data_type: GDAL data type.
+       shape: Shape of raster (nrows, ncols).
+       fmt: GDAL driver name, defaults to GTiff.
+       nd_val: No data value to set on band.
+       dco: Dataset creation options (driver specific - refer to GDAL docs).
+       srs: osr.SpatialReference.
+    Returns:
+       Reference to GDAL datasource.
+    """
+    driver = gdal.GetDriverByName(fmt)
+    assert(driver is not None)
+    if fmt != "MEM" and os.path.isfile(cstr):
+        try:
+            driver.Delete(cstr)
+        except Exception as e:
+            LOG.error(str(e))
+        else:
+            LOG.info("Overwriting %s..." % cstr)
+    else:
+        LOG.info("Creating %s..." % cstr)
+    if dco:
+        dst_ds = driver.Create(cstr, shape[1], shape[0], 1, data_type, options=dco)
+    else:
+        dst_ds = driver.Create(cstr, shape[1], shape[0], 1, data_type)
+    dst_ds.SetGeoTransform(geo_ref)
+    if srs is not None:
+        if not isinstance(srs, osr.SpatialReference):
+            raise TypeError("srs must be osr.SpatialReference")
+        dst_ds.SetProjection(srs.ExportToWkt())
+    if nd_val is not None:
+        band = dst_ds.GetRasterBand(1)
+        band.SetNoDataValue(nd_val)
+    return dst_ds
+
+
 class Grid(object):
     """
     Grid abstraction class (1 band image).
@@ -514,12 +555,9 @@ class Grid(object):
         ncols = int(np.ceil((xmax - xmin) / cx))
         nrows = int(np.ceil((ymax - ymin) / cy))
         assert ncols < 5 * 1e4 and nrows < 5 * 1e4
-        mem_drv = src_ds.GetDriver()
-        dst_ds = mem_drv.Create("out", ncols, nrows, 1, self.npy2gdaltype(self.dtype))
-        dst_ds.SetGeoTransform(new_georef)
-        dst_ds.SetProjection(dst_srs.ExportToWkt())
+        dst_ds = create_gdal_ds("out", new_georef, self.npy2gdaltype(self.dtype), (nrows, ncols), 
+                                fmt="MEM", nd_val=self.nd_val, srs=dst_srs)
         band = dst_ds.GetRasterBand(1)
-        band.SetNoDataValue(self.nd_val)
         band.WriteArray(np.ones((nrows, ncols), dtype=self.dtype) * self.nd_val)
         rc = gdal.ReprojectImage(src_ds, dst_ds, self.srs.ExportToWkt(), dst_srs.ExportToWkt(), resample_method)
         assert rc == 0
@@ -548,38 +586,20 @@ class Grid(object):
 
     def as_gdal_dataset(self, fname, fmt="GTiff", dco=None, srs=None):
         gdal_dtype = self.npy2gdaltype(self.dtype)
-        driver = gdal.GetDriverByName(fmt)
-        assert(driver is not None)
-        if os.path.exists(fname):
-            try:
-                driver.Delete(fname)
-            except Exception as e:
-                LOG.error(str(e))
-            else:
-                LOG.info("Overwriting %s..." % fname)
-        else:
-            LOG.info("Saving %s..." % fname)
-        if dco:
-            dst_ds = driver.Create(fname, self.grid.shape[1], self.grid.shape[0], 1, gdal_dtype, options=dco)
-        else:
-            dst_ds = driver.Create(fname, self.grid.shape[1], self.grid.shape[0], 1, gdal_dtype)
-        dst_ds.SetGeoTransform(self.geo_ref)
         if srs is None:  # will override self.srs which is default if set
             srs = self.srs
         if srs is not None:
             if not isinstance(srs, osr.SpatialReference):
                 raise TypeError("srs must be osr.SpatialReference")
-            dst_ds.SetProjection(srs.ExportToWkt())
-        band = dst_ds.GetRasterBand(1)
-        if self.nd_val is not None:
-            band.SetNoDataValue(self.nd_val)
-        band.WriteArray(self.grid)
+        dst_ds = create_gdal_ds(fname, self.geo_ref, gdal_dtype,
+                                self.shape, fmt, self.nd_val,
+                                dco, srs)
+        dst_ds.GetRasterBand(1).WriteArray(self.grid)
         return dst_ds
 
     def save(self, fname, fmt="GTiff", dco=None, srs=None):
         dst_ds = self.as_gdal_dataset(fname, fmt, dco, srs)
         dst_ds = None  # flush
-        return True
 
     @property
     def extent(self):
