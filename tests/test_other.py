@@ -7,7 +7,7 @@ import unittest
 import logging
 import numpy as np
 from osgeo import ogr, osr, gdal
-from thatsDEM2 import array_geometry, grid
+from thatsDEM2 import array_geometry, grid, vector_io, osr_utils
 
 LOG = logging.getLogger(__name__)
 
@@ -50,11 +50,9 @@ class OtherTests(unittest.TestCase):
         arr = np.random.rand(100, 100) * 100
         # 10 by 10 degrees input extent
         geo_ref = [-5, 0.1, 0, 5, 0, -0.1]
-        srs_in = osr.SpatialReference()
-        srs_in.ImportFromEPSG(4326)
-        srs_out = osr.SpatialReference()
+        srs_in = osr_utils.from_epsg(4326)
+        srs_out = osr_utils.from_epsg(3857)
         # approximate output cellsize 11 km
-        srs_out.ImportFromEPSG(3857)
         g_in = grid.Grid(arr, geo_ref, nd_val=-999, srs=srs_in)
         g_out = g_in.warp(srs_out)
         self.assertEqual(g_out.shape[0], 101)
@@ -64,6 +62,20 @@ class OtherTests(unittest.TestCase):
         self.assertEqual(g_back.shape[0], 100)
         self.assertEqual(g_back.shape[1], 100)
         self.assertAlmostEqual(np.fabs(g_back.geo_ref - geo_ref).max(), 0)
+
+    def test_polygonize_burn(self):
+        LOG.info("Testing vector_io burn / polygonize methods.")
+        M = np.zeros((100, 100), dtype=np.bool)
+        M[10:90, 10:20] = 1
+        M[10:90, 80:90] = 1
+        geo_ref = [0, 1, 0, 100, 0 , -1]
+        srs = osr_utils.from_epsg(3857)
+        ds, layer = vector_io.polygonize(M, geo_ref, srs)
+        self.assertEqual(layer.GetFeatureCount(), 2)
+        M_out = vector_io.just_burn_layer(layer, geo_ref, M.shape)
+        self.assertTrue(M_out[M].all())
+        self.assertTrue(srs.IsSame(layer.GetSpatialRef()))
+        
 
 
 if __name__ == "__main__":

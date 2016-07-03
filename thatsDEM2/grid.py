@@ -361,7 +361,7 @@ def create_gdal_ds(cstr, geo_ref, data_type, shape, fmt="GTiff", nd_val=None, dc
        fmt: GDAL driver name, defaults to GTiff.
        nd_val: No data value to set on band.
        dco: Dataset creation options (driver specific - refer to GDAL docs).
-       srs: osr.SpatialReference.
+       srs: osr.SpatialReference, OR a string containing GDAL wkt definition.
     Returns:
        Reference to GDAL datasource.
     """
@@ -382,9 +382,12 @@ def create_gdal_ds(cstr, geo_ref, data_type, shape, fmt="GTiff", nd_val=None, dc
         dst_ds = driver.Create(cstr, shape[1], shape[0], 1, data_type)
     dst_ds.SetGeoTransform(geo_ref)
     if srs is not None:
-        if not isinstance(srs, osr.SpatialReference):
-            raise TypeError("srs must be osr.SpatialReference")
-        dst_ds.SetProjection(srs.ExportToWkt())
+        if isinstance(srs, osr.SpatialReference):
+            srs_wkt = srs.ExportToWkt()
+        else:
+            # GDAL should complain if this is something bad
+            srs_wkt = srs
+        dst_ds.SetProjection(srs_wkt)
     if nd_val is not None:
         band = dst_ds.GetRasterBand(1)
         band.SetNoDataValue(nd_val)

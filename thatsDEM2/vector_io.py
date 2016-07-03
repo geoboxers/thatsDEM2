@@ -187,6 +187,37 @@ def burn_vector_layer(cstr, georef, shape, layername=None, layersql=None,
     return A
 
 
+def rasterize_layer(layer, ds_out, attr=None, burn3d=False, all_touched=True):
+    """
+    Primitive version of just_burn_layer, where ds_out has already been created.
+    """
+    options = []
+    if all_touched:
+        options.append('ALL_TOUCHED=TRUE')
+    if attr is not None and burn3d:
+        raise ValueError("attr and burn3d keywords incompatible.")
+    if attr is not None:
+        # we want to burn an attribute - take a different path
+        options.append('ATTRIBUTE=%s' % attr)
+    elif burn3d:
+        options.append('BURN_VALUE_FROM=Z')
+    if attr is not None:
+        ok = gdal.RasterizeLayer(ds_out, [1], layer, options=options)
+    else:
+        if burn3d:
+            # As explained by Even Rouault:
+            # default burn val is 255 if not given.
+            # So for burn3d we MUST supply burnval=0
+            # and 3d part will be added to that.
+            burn_val = 0
+        else:
+            burn_val = 1
+        ok = gdal.RasterizeLayer(
+            ds_out, [1], layer,
+            burn_values=[burn_val], options=options)
+    assert ok == 0
+
+
 def just_burn_layer(layer, georef, shape, attr=None, nd_val=0,
                     dtype=np.bool, all_touched=True, burn3d=False,
                     output_srs=None):
@@ -221,31 +252,7 @@ def just_burn_layer(layer, georef, shape, attr=None, nd_val=0,
 
     if output_srs is not None:
         mask_ds.SetProjection(output_srs.ExportToWkt())
-
-    options = []
-    if all_touched:
-        options.append('ALL_TOUCHED=TRUE')
-    if attr is not None and burn3d:
-        raise ValueError("attr and burn3d keywords incompatible.")
-    if attr is not None:
-        # we want to burn an attribute - take a different path
-        options.append('ATTRIBUTE=%s' % attr)
-    elif burn3d:
-        options.append('BURN_VALUE_FROM=Z')
-    if attr is not None:
-        ok = gdal.RasterizeLayer(mask_ds, [1], layer, options=options)
-    else:
-        if burn3d:
-            # As explained by Even Rouault:
-            # default burn val is 255 if not given.
-            # So for burn3d we MUST supply burnval=0
-            # and 3d part will be added to that.
-            burn_val = 0
-        else:
-            burn_val = 1
-        ok = gdal.RasterizeLayer(
-            mask_ds, [1], layer,
-            burn_values=[burn_val], options=options)
+    rasterize_layer(layer, mask_ds, attr, burn3d, all_touched)
     A = mask_ds.ReadAsArray().astype(dtype)
     return A
 
