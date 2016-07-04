@@ -75,7 +75,13 @@ class OtherTests(unittest.TestCase):
         M_out = vector_io.just_burn_layer(layer, geo_ref, M.shape)
         self.assertTrue(M_out[M].all())
         self.assertTrue(srs.IsSame(layer.GetSpatialRef()))
-        
+    
+    def test_osr_from_string(self):
+        LOG.info("Testing osr_utils methods.")
+        srs1 = osr_utils.from_string("EPSG:4326")
+        proj4_def = srs1.ExportToProj4()
+        srs2 = osr_utils.from_string(proj4_def)
+        self.assertTrue(srs1.IsSame(srs2))
 
 
 if __name__ == "__main__":

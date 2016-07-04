@@ -48,6 +48,12 @@ def from_string(some_str):
         return from_proj4(some_str)
     # else wkt?
     srs = osr.SpatialReference(some_str)
+    try:
+        err = srs.Validate()
+    except Exception as e:
+        err = 1
+    if err != 0:
+        raise ValueError("Unable to get valid srs from " + some_str)
     return srs
 
 
