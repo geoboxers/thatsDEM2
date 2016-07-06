@@ -18,6 +18,7 @@
 """
 
 from osgeo import ogr, osr, gdal
+import os
 import numpy as np
 import time
 import logging
@@ -323,7 +324,37 @@ def get_features(cstr, layername=None, layersql=None, extent=None, set_filter=Tr
     return feats
 
 
-def polygonize(M, georef, srs=None):
+def polygonize_raster_ds(ds, cstr, layername="polys", fmt="ESRI Shapefile", dst_fieldname="DN"):
+    """
+    Polygonize a raster datasource.
+    Args:
+        ds: GDAL raster ds (dtype gdal.GDT_Byte or some other integer type).
+        cstr: Connection string to NEW ogr datasource, will be deleted if it exists.
+        layername: Name of output polygon layer
+        fmt: GDAL driver name.
+        dst_fieldname: fieldname to create in output layer.
+    Returns:
+        ogr_datasource, ogr_layer
+    """
+    ogr_drv = ogr.GetDriverByName(fmt)
+    if ogr_drv is None:
+        raise ValueError("No driver named: %s" % fmt)
+    if os.path.exists(cstr) and fmt.lower() != "memory":
+        # Try to delete datasource
+        ogr_drv.DeleteDataSource(cstr)
+    ogr_ds = ogr_drv.CreateDataSource(cstr)
+    srs_wkt = ds.GetProjection()
+    srs = osr.SpatialReference(srs_wkt) if srs_wkt else None
+    lyr = ogr_ds.CreateLayer(layername, srs, ogr.wkbPolygon)
+    fd = ogr.FieldDefn(dst_fieldname, ogr.OFTInteger)
+    lyr.CreateField(fd)
+    dst_field = 0
+    # Ok - so now polygonize that - use the mask as ehem... mask...
+    gdal.Polygonize(ds.GetRasterBand(1), ds.GetRasterBand(1), lyr, dst_field)
+    return ogr_ds, lyr
+
+
+def polygonize(M, georef, srs=None, dst_fieldname="DN"):
     """
     Polygonize a mask.
     Args:
@@ -334,7 +365,6 @@ def polygonize(M, georef, srs=None):
         OGR datasource, OGR layer
     """
     # polygonize an input Mask (bool or uint8 -todo, add more types)
-    dst_fieldname = 'DN'
     # create a GDAL memory raster
     mem_driver = gdal.GetDriverByName("MEM")
     mask_ds = mem_driver.Create("dummy", int(M.shape[1]), int(M.shape[0]), 1, gdal.GDT_Byte)
@@ -342,13 +372,6 @@ def polygonize(M, georef, srs=None):
     if srs is not None:
         mask_ds.SetProjection(srs.ExportToWkt())
     mask_ds.GetRasterBand(1).WriteArray(M)  # write zeros to output
-    # Ok - so now polygonize that - use the mask as ehem... mask...
-    m_drv = ogr.GetDriverByName("Memory")
-    ds = m_drv.CreateDataSource("dummy")
-    lyr = ds.CreateLayer("polys", srs, ogr.wkbPolygon)
-    fd = ogr.FieldDefn(dst_fieldname, ogr.OFTInteger)
-    lyr.CreateField(fd)
-    dst_field = 0
-    gdal.Polygonize(mask_ds.GetRasterBand(1), mask_ds.GetRasterBand(1), lyr, dst_field)
+    ds, lyr = polygonize_raster_ds(mask_ds, "dummy", "polys", "Memory")
     lyr.ResetReading()
     return ds, lyr

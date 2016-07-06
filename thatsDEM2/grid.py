@@ -391,6 +391,7 @@ def create_gdal_ds(cstr, geo_ref, data_type, shape, fmt="GTiff", nd_val=None, dc
     if nd_val is not None:
         band = dst_ds.GetRasterBand(1)
         band.SetNoDataValue(nd_val)
+        band.Fill(nd_val)
     return dst_ds
 
 
