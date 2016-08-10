@@ -350,7 +350,8 @@ def intersect_grid_extents(georef1, shape1, georef2, shape2):
     return (rs1, cs1), (rs2, cs2)
 
 
-def create_gdal_ds(cstr, geo_ref, data_type, shape, fmt="GTiff", nd_val=None, dco=None, srs=None):
+def create_gdal_ds(cstr, geo_ref, data_type, shape, fmt="GTiff", nd_val=None,
+                   dco=None, srs=None, fill_val=None):
     """
     Create a (1 band) GDAL raster datasource.
     Args:
@@ -362,6 +363,8 @@ def create_gdal_ds(cstr, geo_ref, data_type, shape, fmt="GTiff", nd_val=None, dc
        nd_val: No data value to set on band.
        dco: Dataset creation options (driver specific - refer to GDAL docs).
        srs: osr.SpatialReference, OR a string containing GDAL wkt definition.
+       fill_val: Value to initialise with. If None and nd_val is not None,
+                 fill_val will be nd_val.
     Returns:
        Reference to GDAL datasource.
     """
@@ -391,6 +394,9 @@ def create_gdal_ds(cstr, geo_ref, data_type, shape, fmt="GTiff", nd_val=None, dc
     if nd_val is not None:
         band = dst_ds.GetRasterBand(1)
         band.SetNoDataValue(nd_val)
+        if fill_val is None:
+            fill_val = nd_val
+    if fill_val is not None:
         band.Fill(nd_val)
     return dst_ds
 
