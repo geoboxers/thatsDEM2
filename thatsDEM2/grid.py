@@ -391,8 +391,8 @@ def create_gdal_ds(cstr, geo_ref, data_type, shape, fmt="GTiff", nd_val=None,
             # GDAL should complain if this is something bad
             srs_wkt = srs
         dst_ds.SetProjection(srs_wkt)
+    band = dst_ds.GetRasterBand(1)
     if nd_val is not None:
-        band = dst_ds.GetRasterBand(1)
         band.SetNoDataValue(nd_val)
         if fill_val is None:
             fill_val = nd_val
