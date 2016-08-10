@@ -397,7 +397,8 @@ def create_gdal_ds(cstr, geo_ref, data_type, shape, fmt="GTiff", nd_val=None,
         if fill_val is None:
             fill_val = nd_val
     if fill_val is not None:
-        band.Fill(nd_val)
+        LOG.info("Filling band with: %s" % fill_val)
+        band.Fill(fill_val)
     return dst_ds
 
 
