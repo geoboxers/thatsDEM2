@@ -191,6 +191,9 @@ def burn_vector_layer(cstr, georef, shape, layername=None, layersql=None,
 def rasterize_layer(layer, ds_out, attr=None, burn3d=False, all_touched=True):
     """
     Primitive version of just_burn_layer, where ds_out has already been created.
+    It is the callers responsibility to supply a properly filtered layer,
+    e.g. by setting a client side spatial filter, or by using a dataprovider
+    side filter, e.g. in layersql.
     """
     options = []
     if all_touched:
