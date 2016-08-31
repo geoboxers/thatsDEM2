@@ -22,6 +22,7 @@ import os
 import ctypes
 import numpy as np
 from math import ceil
+import logging
 from osgeo import gdal, ogr, osr
 try:
     import thatsDEM2.triangle as triangle
@@ -49,6 +50,9 @@ except Exception:
     HAS_SLASH = False
 else:
     HAS_SLASH = True
+
+
+LOG = logging.getLogger(__name__)
 
 
 class InvalidArrayError(Exception):
@@ -648,7 +652,8 @@ class Pointcloud(object):
             return grid.Grid(z, geo_ref, nd_val, srs=self.srs)
         elif hasattr(method, "__call__"):
             val = self.get_array(attr)
-            return grid.make_grid(self.xy, val, ncols, nrows, geo_ref, nd_val=nd_val, method=method)
+            return grid.make_grid(self.xy, val, ncols, nrows, geo_ref, nd_val=nd_val,
+                                  method=method, srs=self.srs)
         else:
             raise ValueError("Unsupported method.")
 
@@ -957,7 +962,7 @@ class Pointcloud(object):
     @classmethod
     def from_ogr(cls, cstr, layername=None, layersql=None, extent=None, **kwargs):
         """
-        Load a pointcloud from an OGR 3D-point datasource.
+        Load a pointcloud from an OGR point datasource.
         Args:
             path:  OGR connection string.
             layername: name of layer to load. Use either layername or layersql.
@@ -969,7 +974,8 @@ class Pointcloud(object):
         ds, layer = vector_io.open(cstr, layername, layersql, extent)
         layer_defn = layer.GetLayerDefn()
         geom_type = layer.GetGeomType()
-        assert geom_type in [ogr.wkbPoint, ogr.wkbPoint25D]
+        if geom_type not in [ogr.wkbPoint, ogr.wkbPoint25D]:
+            LOG.warning("Geomtry not of point type, will try to read one xy(z) point from each feature anyway.")
         # Determine what attributes to keep...
         attr_types = {}
         for field in range(layer_defn.GetFieldCount()):

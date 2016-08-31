@@ -309,6 +309,13 @@ class TestPointcloud(unittest.TestCase):
         pc_copy = pc.copy()
         self.assertTrue(pc_copy.srs.IsSame(pc.srs))
 
+    def test_grid_srs(self):
+        LOG.info("Test pointcloud.warp2d")
+        pc = pointcloud.Pointcloud.from_array(np.ones((10, 10)), [512200, 100, 0, 6143200, 0, -100])
+        pc.set_srs(osr_utils.from_epsg(25832))
+        g = pc.get_grid(cx=100, cy=100, method="cellcount")
+        self.assertTrue(g.srs.IsSame(pc.srs))
+
     def _get_named_temp_file(self, ext):
         f = tempfile.NamedTemporaryFile(suffix=ext, delete=False)
         f.close()
@@ -343,6 +350,10 @@ class TestPointcloud(unittest.TestCase):
         self.assertItemsEqual(pc.attributes, pc_restore.attributes)
         self.assertAlmostEqual(np.fabs(pc.xy - pc_restore.xy).max(), 0, 3)
         self.assertAlmostEqual(np.fabs(pc.z - pc_restore.z).max(), 0, 3)
+        # Try some ogr sql
+        layersql = "select ogr_geometry, 5.0 as data from OGRGeojson"
+        pc_restore2 = pointcloud.Pointcloud.from_ogr(path, layersql=layersql)
+        self.assertTrue((pc_restore2.data == 5).all())
         os.remove(path)
 
 if __name__ == "__main__":
