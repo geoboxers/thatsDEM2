@@ -517,7 +517,7 @@ double mean_filter(double *xy, double z, int *indices, double *pc_xy, double *pc
         i2=indices[2*i+1];
         for(j=i1;j<i2;j++){
             d=SQUARE((pc_xy[2*j]-xy[0]))+SQUARE((pc_xy[2*j+1]-xy[1]));
-            if (d<=frad2){
+            if (d<=frad2 && !isnan(pc_z[j])){
                 m+=pc_z[j];
                 n+=1;
             }
@@ -539,7 +539,7 @@ double var_filter(double *xy, double z, int *indices, double *pc_xy, double *pc_
         i2=indices[2*i+1];
         for(j=i1;j<i2;j++){
             d=SQUARE((pc_xy[2*j]-xy[0]))+SQUARE((pc_xy[2*j+1]-xy[1]));
-            if (d<=frad2){
+            if (d<=frad2 && !isnan(pc_z[j])){
                 m+=pc_z[j];
                 m2+=SQUARE(pc_z[j]);
                 n+=1;
@@ -633,7 +633,7 @@ double idw_filter(double *xy, double z, int *indices, double *pc_xy, double *pc_
         i2=indices[2*i+1];
         for(j=i1;j<i2;j++){
             d=SQUARE((pc_xy[2*j]-xy[0]))+SQUARE((pc_xy[2*j+1]-xy[1]));
-            if (d<=frad2){
+            if (d<=frad2 && !isnan(pc_z[j])){
                 ww=1/MAX(d,1e-8);
                 m+=pc_z[j]*ww;
                 w+=ww;
@@ -792,7 +792,7 @@ double median_filter(double *xy, double z, int *indices, double *pc_xy, double *
         i2=indices[2*i+1];
         for(j=i1;j<i2;j++){
             d=SQUARE((pc_xy[2*j]-xy[0]))+SQUARE((pc_xy[2*j+1]-xy[1]));
-            if (d<=frad2){
+            if (d<=frad2 && ! isnan(pc_z[j])){
                 zs[n]=pc_z[j];
                 n+=1;
             }
