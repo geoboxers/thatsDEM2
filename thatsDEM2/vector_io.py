@@ -378,3 +378,34 @@ def polygonize(M, georef, srs=None, dst_fieldname="DN"):
     ds, lyr = polygonize_raster_ds(mask_ds, "dummy", "polys", "Memory")
     lyr.ResetReading()
     return ds, lyr
+
+
+def create_ogr_datasource(cstr, fmt="SQLITE", dsco=None, overwrite=True):
+    """
+    Create an ogr datasource.
+    """
+    ogr_drv = ogr.GetDriverByName(fmt)
+    if not dsco:
+        dsco = []
+    if ogr_drv is None:
+        raise ValueError("No driver named: %s" % fmt)
+    if os.path.exists(cstr) and fmt != "Memory" and overwrite:
+        LOG.info("Removing %s" % cstr)
+        os.remove(cstr)
+    LOG.info("Creating %s" % cstr)
+    ogr_ds = ogr_drv.CreateDataSource(cstr, dsco)
+    return ogr_ds
+
+
+def create_ogr_layer(ogr_ds, field_list, layername, geom_type, lco=None, srs=None):
+    """
+    Create a layer in ogr datasource.
+    """
+    layer = ogr_ds.CreateLayer(layername, srs, geom_type)
+    for field_name, field_type in field_list:
+        field_defn = ogr.FieldDefn(field_name, field_type)
+        if field_type == ogr.OFTString:
+            field_defn.SetWidth(32)
+        ok = layer.CreateField(field_defn)
+        assert ok == 0
+    return layer
