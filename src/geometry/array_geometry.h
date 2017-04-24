@@ -46,6 +46,7 @@ DLL_EXPORT double min_filter(double *, double, int *, double *, double *, double
 DLL_EXPORT double max_filter(double *, double, int *, double *, double *, double, double, void *);
 DLL_EXPORT double var_filter(double *, double, int *, double *, double *, double, double, void *);
 DLL_EXPORT double mean_filter(double *, double, int *, double *, double *, double, double, void *);
+DLL_EXPORT double adaptive_gaussian_filter(double *, double, int *, double *, double *, double, double, void *);
 DLL_EXPORT double median_filter(double *, double, int *, double *, double *, double, double, void *);
 DLL_EXPORT double spike_filter(double *, double, int *, double *, double *, double, double, void *);
 DLL_EXPORT double density_filter(double *, double, int *, double *, double *, double, double, void *);

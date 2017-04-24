@@ -148,6 +148,27 @@ class TestPointcloud(unittest.TestCase):
         z = pc.min_filter(1.5)
         self.assertTrue((z == (1, 1, 2, 3)).all())
 
+    def test_pointcloud_adaptive_filter1(self):
+        LOG.info("Test pointcloud adaptive filter1")
+        pc = pointcloud.Pointcloud.from_array(
+            np.arange(100).reshape((10, 10)), [0, 1, 0, 10, 0, -1])
+        pc.sort_spatially(5)
+        z = pc.adaptive_gaussian_filter(0.5, 1)
+        self.assertTrue((z == pc.z).all())
+
+    def test_pointcloud_adaptive_filter2(self):
+        LOG.info("Test pointcloud adaptive filter2")
+        pc = pointcloud.Pointcloud.from_array(
+            np.arange(100).reshape((10, 10)), [0, 1, 0, 10, 0, -1])
+        pc.sort_spatially(5)
+        z = pc.adaptive_gaussian_filter(5, 2000)
+        self.assertTrue((z != pc.z).all())
+        self.assertTrue((z >= pc.z.min()).all())
+        self.assertTrue((z <= pc.z.max()).all())
+        z = pc.adaptive_gaussian_filter(5, 20)
+        self.assertTrue((z >= pc.z.min()).all())
+        self.assertTrue((z <= pc.z.max()).all())
+
     def _test_pointcloud_grid_filter(self, method, mean_val):
         LOG.info("Test pointcloud gridding, method: %s" % str(method))
         pc = pointcloud.Pointcloud.from_array(
@@ -309,6 +330,13 @@ class TestPointcloud(unittest.TestCase):
         pc_copy = pc.copy()
         self.assertTrue(pc_copy.srs.IsSame(pc.srs))
 
+    def test_grid_srs(self):
+        LOG.info("Test pointcloud.warp2d")
+        pc = pointcloud.Pointcloud.from_array(np.ones((10, 10)), [512200, 100, 0, 6143200, 0, -100])
+        pc.set_srs(osr_utils.from_epsg(25832))
+        g = pc.get_grid(cx=100, cy=100, method="cellcount")
+        self.assertTrue(g.srs.IsSame(pc.srs))
+
     def _get_named_temp_file(self, ext):
         f = tempfile.NamedTemporaryFile(suffix=ext, delete=False)
         f.close()
@@ -343,6 +371,10 @@ class TestPointcloud(unittest.TestCase):
         self.assertItemsEqual(pc.attributes, pc_restore.attributes)
         self.assertAlmostEqual(np.fabs(pc.xy - pc_restore.xy).max(), 0, 3)
         self.assertAlmostEqual(np.fabs(pc.z - pc_restore.z).max(), 0, 3)
+        # Try some ogr sql
+        layersql = "select ogr_geometry, 5.0 as data from OGRGeojson"
+        pc_restore2 = pointcloud.Pointcloud.from_ogr(path, layersql=layersql)
+        self.assertTrue((pc_restore2.data == 5).all())
         os.remove(path)
 
 if __name__ == "__main__":

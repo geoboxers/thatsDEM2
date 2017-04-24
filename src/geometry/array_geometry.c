@@ -406,6 +406,7 @@ void apply_filter(double *xy,
     } /*end rows*/
 }
 
+
 double min_filter(double *xy, double z, int *indices, double *pc_xy, double *pc_z, double frad2, double nd_val, void *opt_params){
     int i,i1,i2,j, n=0;
     double m=HUGE_VAL,d;
@@ -517,7 +518,7 @@ double mean_filter(double *xy, double z, int *indices, double *pc_xy, double *pc
         i2=indices[2*i+1];
         for(j=i1;j<i2;j++){
             d=SQUARE((pc_xy[2*j]-xy[0]))+SQUARE((pc_xy[2*j+1]-xy[1]));
-            if (d<=frad2){
+            if (d<=frad2 && !isnan(pc_z[j])){
                 m+=pc_z[j];
                 n+=1;
             }
@@ -539,7 +540,7 @@ double var_filter(double *xy, double z, int *indices, double *pc_xy, double *pc_
         i2=indices[2*i+1];
         for(j=i1;j<i2;j++){
             d=SQUARE((pc_xy[2*j]-xy[0]))+SQUARE((pc_xy[2*j+1]-xy[1]));
-            if (d<=frad2){
+            if (d<=frad2 && !isnan(pc_z[j])){
                 m+=pc_z[j];
                 m2+=SQUARE(pc_z[j]);
                 n+=1;
@@ -552,6 +553,7 @@ double var_filter(double *xy, double z, int *indices, double *pc_xy, double *pc_
     }
     return nd_val;
 }
+
 
 double density_filter(double *xy, double z, int *indices, double *pc_xy, double *pc_z, double frad2, double nd_val, void *opt_params){
     int i,i1,i2,j,n=0;
@@ -633,7 +635,7 @@ double idw_filter(double *xy, double z, int *indices, double *pc_xy, double *pc_
         i2=indices[2*i+1];
         for(j=i1;j<i2;j++){
             d=SQUARE((pc_xy[2*j]-xy[0]))+SQUARE((pc_xy[2*j+1]-xy[1]));
-            if (d<=frad2){
+            if (d<=frad2 && !isnan(pc_z[j])){
                 ww=1/MAX(d,1e-8);
                 m+=pc_z[j]*ww;
                 w+=ww;
@@ -778,7 +780,6 @@ static int compar (const void* a, const void* b){
 }
 
 
-
 /*todo - to fractile_filter and implement faster sorting...*/
 double median_filter(double *xy, double z, int *indices, double *pc_xy, double *pc_z, double frad2, double nd_val, void *nothing){
     int i,i1,i2,j,n=0,n_all=0;
@@ -792,7 +793,7 @@ double median_filter(double *xy, double z, int *indices, double *pc_xy, double *
         i2=indices[2*i+1];
         for(j=i1;j<i2;j++){
             d=SQUARE((pc_xy[2*j]-xy[0]))+SQUARE((pc_xy[2*j+1]-xy[1]));
-            if (d<=frad2){
+            if (d<=frad2 && ! isnan(pc_z[j])){
                 zs[n]=pc_z[j];
                 n+=1;
             }
@@ -813,7 +814,68 @@ double median_filter(double *xy, double z, int *indices, double *pc_xy, double *
     return m;
 }
     
-    
+/* A Gaussian filter with dynamic width according to distance distribution */
+double adaptive_gaussian_filter(double *xy, double z,
+                                 int *indices, double *pc_xy, 
+                                 double *pc_z, double frad2, 
+                                 double nd_val, void *opt_params){
+    int i, i1, i2, j, n=0, n_all=0, *params;
+    double *ds, m=nd_val, d, dm=0;
+    params= (int*) opt_params;
+    for(i=0; i<3; i++){
+        n_all += indices[2*i + 1] - indices[2*i];
+    }
+    ds = malloc(sizeof(double)*n_all);
+    for(i=0; i<3; i++){
+        i1=indices[2*i];
+        i2=indices[2*i + 1]; /*possibly empty slice*/
+        for(j=i1; j<i2; j++){
+            d=SQUARE((pc_xy[2*j]-xy[0]))+SQUARE((pc_xy[2*j + 1]-xy[1]));
+            if (d<=frad2 && ! isnan(pc_z[j])){
+                ds[n++] = d;
+                dm += d;
+                m = pc_z[j]; /* store last one for now */
+            }
+        } 
+    }
+    /*printf("m: %.2f, n: %d\n", m, n);*/
+    if (n > 1){
+        double w, tw=0, sd;
+        int n_nearest;
+        n_nearest = params[0];
+        m = 0; /* reset m */
+        if (n >= n_nearest){
+            qsort(ds, n, sizeof(double), compar);
+            i = n_nearest / 2;
+            /*printf("I is: %d, n_nearest is: %d\n", i, n_nearest);*/
+            sd = ds[i];
+        }
+        else{
+            sd = (dm / n) * 0.5;
+        }
+        /*printf("sd: %.2f\n", sqrt(sd));*/
+        for(i=0; i<3; i++){
+            i1=indices[2*i];
+            i2=indices[2*i+1]; /*possibly empty slice*/
+            for(j=i1; j<i2; j++){
+                d=SQUARE((pc_xy[2*j]-xy[0]))+SQUARE((pc_xy[2*j+1]-xy[1]));
+                if (d<=frad2 && d < (4 * sd) && ! isnan(pc_z[j])){
+                    w = exp(-d / sd);
+                    tw += w;
+                    m += w * pc_z[j];
+                }
+            }
+        }
+        /*printf("tw: %.4f\n", tw);*/
+        m /= tw;
+        /* DEBUG - turn off eventually */
+        if isnan(m){
+            printf("n: %d, tw: %.5f, sd: %.4f, dm: %.4f\n", n, tw, sd, dm/n);
+        }
+    }
+    free(ds);
+    return m;
+}
 
 
 /* tanv2 is tangens of steepnes angle squared 

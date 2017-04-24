@@ -22,6 +22,7 @@ import os
 import ctypes
 import numpy as np
 from math import ceil
+import logging
 from osgeo import gdal, ogr, osr
 try:
     import thatsDEM2.triangle as triangle
@@ -49,6 +50,9 @@ except Exception:
     HAS_SLASH = False
 else:
     HAS_SLASH = True
+
+
+LOG = logging.getLogger(__name__)
 
 
 class InvalidArrayError(Exception):
@@ -536,7 +540,7 @@ class Pointcloud(object):
         return self.triangle_validity_mask
 
     def get_grid(self, ncols=None, nrows=None, x1=None, x2=None, y1=None, y2=None,
-                 cx=None, cy=None, nd_val=-999, method="triangulation", attr="z", srad=None):
+                 cx=None, cy=None, nd_val=-999, method="triangulation", attr="z", srad=None, params=None):
         """
         Grid (an attribute of) the pointcloud.
         Will calculate grid size and georeference from supplied input (or pointcloud extent).
@@ -560,6 +564,7 @@ class Pointcloud(object):
             attr: The attribute to grid - defaults to z.
                   Will cast attr to float64 for triangulation method, and int 32 for most_frequent.
             srad: The search radius to use for the filter variant methods.
+            params: Possible a list of params to pass to filter method.
         Returns:
             A grid.Grid object and a grid.Grid object with triangle sizes if 'return_triangles' is specified.
         Raises:
@@ -632,7 +637,7 @@ class Pointcloud(object):
                 self.xy, val, ncols, nrows, geo_ref, nd_val=nd_val, srs=self.srs)
             return g
         elif method in ("density_filter", "idw_filter", "max_filter",
-                        "min_filter", "mean_filter", "median_filter", "var_filter"):
+                        "min_filter", "mean_filter", "median_filter", "var_filter", "adaptive_gaussian_filter"):
             if self.spatial_index is None:
                 raise ValueError("Sort pointcloud first")
             if srad is None:
@@ -642,13 +647,16 @@ class Pointcloud(object):
             pts = array_geometry.mesh_as_points((nrows, ncols), geo_ref)
             if method == "density_filter":
                 z = filter_func(srad, xy=pts).reshape((nrows, ncols))
+            elif method == "adaptive_gaussian_filter":
+                z = filter_func(srad, params[0], xy=pts, attr=attr, nd_val=nd_val).reshape((nrows, ncols))
             else:
                 z = filter_func(srad, xy=pts, nd_val=nd_val,
                                 attr=attr).reshape((nrows, ncols))
             return grid.Grid(z, geo_ref, nd_val, srs=self.srs)
         elif hasattr(method, "__call__"):
             val = self.get_array(attr)
-            return grid.make_grid(self.xy, val, ncols, nrows, geo_ref, nd_val=nd_val, method=method)
+            return grid.make_grid(self.xy, val, ncols, nrows, geo_ref, nd_val=nd_val,
+                                  method=method, srs=self.srs)
         else:
             raise ValueError("Unsupported method.")
 
@@ -957,7 +965,7 @@ class Pointcloud(object):
     @classmethod
     def from_ogr(cls, cstr, layername=None, layersql=None, extent=None, **kwargs):
         """
-        Load a pointcloud from an OGR 3D-point datasource.
+        Load a pointcloud from an OGR point datasource.
         Args:
             path:  OGR connection string.
             layername: name of layer to load. Use either layername or layersql.
@@ -969,7 +977,8 @@ class Pointcloud(object):
         ds, layer = vector_io.open(cstr, layername, layersql, extent)
         layer_defn = layer.GetLayerDefn()
         geom_type = layer.GetGeomType()
-        assert geom_type in [ogr.wkbPoint, ogr.wkbPoint25D]
+        if geom_type not in [ogr.wkbPoint, ogr.wkbPoint25D]:
+            LOG.warning("Geometry not of point type, will try to read one xy(z) point from each feature anyway.")
         # Determine what attributes to keep...
         attr_types = {}
         for field in range(layer_defn.GetFieldCount()):
@@ -1284,6 +1293,22 @@ class Pointcloud(object):
             1D array of filtered values.
         """
         return self.apply_2d_filter(filter_rad, "median_filter", xy, nd_val, attr)
+
+    def adaptive_gaussian_filter(self, filter_rad, n_nearest, xy=None, nd_val=-9999, attr="z"):
+        """
+        Calculate adaptive gaussian of z (or 'attr') along self.xy or a supplied set of input points.
+        Useful for gridding.
+        Args:
+            filter_rad: The radius of the filter. Should not be larger than cell size in spatial index (for now).
+            n_nearest: The limit for number of points which is used for
+                       determining the standard deviation of the filter.
+            xy: Optional list of input points to filter along. Will use self.xy if not supplied.
+        Returns:
+            1D array of filtered values.
+        """
+        _n_nearest = ctypes.c_int(n_nearest)
+        p_params = ctypes.cast(ctypes.byref(_n_nearest), ctypes.c_void_p)
+        return self.apply_2d_filter(filter_rad, "adaptive_gaussian_filter", xy, nd_val, attr, p_params)
 
     def var_filter(self, filter_rad, xy=None, nd_val=-9999, attr="z"):
         """

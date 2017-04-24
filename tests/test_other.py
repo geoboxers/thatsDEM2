@@ -3,16 +3,25 @@
 Unittests for various thatsDEM2 modules
 @author: simlk
 """
+import os
 import unittest
 import logging
 import numpy as np
-from osgeo import ogr, osr, gdal
+import tempfile
+from osgeo import ogr
 from thatsDEM2 import array_geometry, grid, vector_io, osr_utils
 
 LOG = logging.getLogger(__name__)
 
 
 class OtherTests(unittest.TestCase):
+    """Testing the grid module and various other things."""
+
+    def _get_named_temp_file(self, ext):
+        f = tempfile.NamedTemporaryFile(suffix=ext, delete=False)
+        f.close()
+        os.unlink(f.name)  # now we have a unique name, nice :-)
+        return f.name
 
     def test_curve_simplify(self):
         LOG.info("Trying array_geometry.simplify_linestring")
@@ -68,20 +77,34 @@ class OtherTests(unittest.TestCase):
         M = np.zeros((100, 100), dtype=np.bool)
         M[10:90, 10:20] = 1
         M[10:90, 80:90] = 1
-        geo_ref = [0, 1, 0, 100, 0 , -1]
+        geo_ref = [0, 1, 0, 100, 0, -1]
         srs = osr_utils.from_epsg(3857)
         ds, layer = vector_io.polygonize(M, geo_ref, srs)
         self.assertEqual(layer.GetFeatureCount(), 2)
         M_out = vector_io.just_burn_layer(layer, geo_ref, M.shape)
         self.assertTrue(M_out[M].all())
         self.assertTrue(srs.IsSame(layer.GetSpatialRef()))
-    
+
     def test_osr_from_string(self):
         LOG.info("Testing osr_utils methods.")
         srs1 = osr_utils.from_string("EPSG:4326")
         proj4_def = srs1.ExportToProj4()
         srs2 = osr_utils.from_string(proj4_def)
         self.assertTrue(srs1.IsSame(srs2))
+
+    def test_write_load_grid(self):
+        LOG.info("Testing grid write / load.")
+        M = np.random.rand(10, 10)
+        geo_ref = (0, 0.1, 0, 0, 0, -0.1)
+        srs = osr_utils.from_epsg(3857)
+        g_in = grid.Grid(M, geo_ref, srs=srs)
+        f_name = self._get_named_temp_file(".tif")
+        g_in.save(f_name, dco=["COMPRESS=LZW"])
+        g_out = grid.from_gdal(f_name)
+        os.remove(f_name)
+        self.assertTrue((g_in.grid == g_out.grid).all())
+        self.assertTrue((np.array(g_in.geo_ref) == np.array(g_out.geo_ref)).all())
+        self.assertTrue(g_in.srs.IsSame(g_out.srs))
 
 
 if __name__ == "__main__":
