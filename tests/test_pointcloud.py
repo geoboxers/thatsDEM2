@@ -166,7 +166,6 @@ class TestPointcloud(unittest.TestCase):
         self.assertTrue((z >= pc.z.min()).all())
         self.assertTrue((z <= pc.z.max()).all())
         z = pc.adaptive_gaussian_filter(5, 20)
-        self.assertTrue((z != pc.z).all())
         self.assertTrue((z >= pc.z.min()).all())
         self.assertTrue((z <= pc.z.max()).all())
 
