@@ -978,7 +978,7 @@ class Pointcloud(object):
         layer_defn = layer.GetLayerDefn()
         geom_type = layer.GetGeomType()
         if geom_type not in [ogr.wkbPoint, ogr.wkbPoint25D]:
-            LOG.warning("Geomtry not of point type, will try to read one xy(z) point from each feature anyway.")
+            LOG.warning("Geometry not of point type, will try to read one xy(z) point from each feature anyway.")
         # Determine what attributes to keep...
         attr_types = {}
         for field in range(layer_defn.GetFieldCount()):
