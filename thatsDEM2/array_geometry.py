@@ -132,6 +132,7 @@ lib.simplify_linestring.restype = ctypes.c_ulong
 # Names of defined filter functions
 LIBRARY_FILTERS = ("mean_filter",
                    "median_filter",
+                   "adaptive_gaussian_filter",
                    "min_filter",
                    "max_filter",
                    "var_filter",
