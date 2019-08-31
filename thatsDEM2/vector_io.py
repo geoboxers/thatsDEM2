@@ -16,12 +16,14 @@
 """
  Stuff to read / burn vector layers
 """
-
-from osgeo import ogr, osr, gdal
 import os
-import numpy as np
 import time
 import logging
+
+from osgeo import ogr, osr, gdal
+import numpy as np
+
+
 LOG = logging.getLogger(__name__)
 
 # placeholder for tile-wkt -
