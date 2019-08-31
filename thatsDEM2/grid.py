@@ -25,11 +25,17 @@ import ctypes
 import logging
 try:
     import scipy.ndimage as image
-except:
+except ImportError:
     HAS_NDIMAGE = False
 else:
     HAS_NDIMAGE = True
-from thatsDEM2.shared_libraries import *
+from thatsDEM2 import shared_libraries as sh
+# py2 to 3
+try:
+    xrange
+except NameError:
+    xrange = range
+
 LOG = logging.getLogger(__name__)
 XY_TYPE = np.ctypeslib.ndpointer(dtype=np.float64, flags=['C', 'O', 'A', 'W'])
 GRID_TYPE = np.ctypeslib.ndpointer(dtype=np.float64, ndim=2, flags=['C', 'O', 'A', 'W'])
@@ -41,7 +47,7 @@ INT32_GRID_TYPE = np.ctypeslib.ndpointer(dtype=np.int32, ndim=2, flags=['C', 'O'
 INT32_TYPE = np.ctypeslib.ndpointer(dtype=np.int32, ndim=1, flags=['C', 'O', 'A', 'W'])
 GEO_REF_ARRAY = ctypes.c_double * 4
 # Load the library
-lib = np.ctypeslib.load_library(LIB_GRID, LIB_DIR)
+lib = np.ctypeslib.load_library(sh.LIB_GRID, sh.LIB_DIR)
 # void wrap_bilin(double *grid, double *xy, double *out, double *geo_ref,
 # double nd_val, int nrows, int ncols, int npoints)
 
@@ -49,7 +55,7 @@ lib.wrap_bilin.argtypes = [
     GRID_TYPE,
     XY_TYPE,
     Z_TYPE,
-    LP_CDOUBLE,
+    sh.LP_CDOUBLE,
     ctypes.c_double,
     ctypes.c_int,
     ctypes.c_int,
@@ -61,8 +67,8 @@ lib.wrap_bilin.restype = None
 lib.resample_grid.argtypes = [
     GRID_TYPE,
     GRID_TYPE,
-    LP_CDOUBLE,
-    LP_CDOUBLE,
+    sh.LP_CDOUBLE,
+    sh.LP_CDOUBLE,
     ctypes.c_double,
     ctypes.c_int,
     ctypes.c_int,
@@ -148,7 +154,7 @@ def bilinear_interpolation(grid, xy, nd_val, geo_ref=None):
         if len(geo_ref) != 4:
             raise Exception("Geo reference should be sequence of len 4, xulcenter, cx, yulcenter, cy")
         geo_ref = GEO_REF_ARRAY(*geo_ref)
-    p_geo_ref = ctypes.cast(geo_ref, LP_CDOUBLE)  # null or pointer to geo_ref
+    p_geo_ref = ctypes.cast(geo_ref, sh.LP_CDOUBLE)  # null or pointer to geo_ref
     grid = np.require(grid, dtype=np.float64, requirements=['A', 'O', 'C', 'W'])
     xy = np.require(xy, dtype=np.float64, requirements=['A', 'O', 'C', 'W'])
     out = np.zeros((xy.shape[0],), dtype=np.float64)
@@ -206,8 +212,8 @@ def resample_grid(grid, nd_val, geo_ref_in, geo_ref_out, ncols_out, nrows_out):
         raise Exception("Geo reference should be sequence of len 4, xulcenter, cx, yulcenter, cy")
     geo_ref_in = GEO_REF_ARRAY(*geo_ref_in)
     geo_ref_out = GEO_REF_ARRAY(*geo_ref_out)
-    p_geo_ref_in = ctypes.cast(geo_ref_in, LP_CDOUBLE)  # null or pointer to geo_ref
-    p_geo_ref_out = ctypes.cast(geo_ref_out, LP_CDOUBLE)  # null or pointer to geo_ref
+    p_geo_ref_in = ctypes.cast(geo_ref_in, sh.LP_CDOUBLE)  # null or pointer to geo_ref
+    p_geo_ref_out = ctypes.cast(geo_ref_out, sh.LP_CDOUBLE)  # null or pointer to geo_ref
     grid = np.require(grid, dtype=np.float64, requirements=['A', 'O', 'C', 'W'])
     out = np.empty((nrows_out, ncols_out), dtype=np.float64)
     lib.resample_grid(
@@ -566,7 +572,7 @@ class Grid(object):
         ncols = int(np.ceil((xmax - xmin) / cx))
         nrows = int(np.ceil((ymax - ymin) / cy))
         assert ncols < 5 * 1e4 and nrows < 5 * 1e4
-        dst_ds = create_gdal_ds("out", new_georef, self.npy2gdaltype(self.dtype), (nrows, ncols), 
+        dst_ds = create_gdal_ds("out", new_georef, self.npy2gdaltype(self.dtype), (nrows, ncols),
                                 fmt="MEM", nd_val=self.nd_val, srs=dst_srs)
         band = dst_ds.GetRasterBand(1)
         band.WriteArray(np.ones((nrows, ncols), dtype=self.dtype) * self.nd_val)
