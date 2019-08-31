@@ -411,3 +411,37 @@ def create_ogr_layer(ogr_ds, field_list, layername, geom_type, lco=None, srs=Non
         ok = layer.CreateField(field_defn)
         assert ok == 0
     return layer
+
+
+def set_avg_rgb(poly_cstr, lyrname, out_field, rast_cstr, where=None, geom_field="geometry", id_field="ogc_fid"):
+    """
+    Extract avg rgb from a raster inside polygons and store in out_field (string) as r,g,b
+    Requires int32 id field like ogc_fid
+    """
+    ds = gdal.Open(rast_cstr)
+    georef = ds.GetGeoTransform()
+    rgb = ds.ReadAsArray()
+    assert rgb.shape[0] == 3
+    img_shape = rgb.shape[1:]
+    ctx = {
+        'lyrname': lyrname,
+        'out_field': out_field,
+        'where': where,
+        'geom_field': geom_field,
+        'id_field': id_field,
+    }
+    layer_sql = "select {geom_field}, {id_field} from {lyrname} where st_intersects({geom_field}, WKT_EXT)".format(
+        **ctx)
+    if where:
+        layer_sql += " and " + where
+    vec_ds, lyr = open(poly_cstr, layer_sql, extent=get_extent(georef, img_shape))
+    mask = just_burn_layer(lyr, georef, img_shape, attr=id_field, dtype=np.int32, all_touched=False)
+    for n, feat in enumerate(lyr):
+        daid = feat[id_field]
+        ctx['the_id'] = daid
+        I, J = np.where(mask == daid)
+        r = int(round(np.sqrt(((mask[0, I, J] ** 2).mean()))))
+        g = int(round(np.sqrt(((mask[1, I, J] ** 2).mean()))))
+        b = int(round(np.sqrt(((mask[2, I, J] ** 2).mean()))))
+        ctx['rgb'] = '{},{},{}'.format(r, g, b)
+        vec_ds.ExecuteSQL("update {lyrname} set {out_field}='{rgb}' where {id_field}={the_id}".format(**ctx))
