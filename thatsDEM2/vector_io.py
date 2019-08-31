@@ -31,7 +31,7 @@ LOG = logging.getLogger(__name__)
 EXTENT_WKT = "WKT_EXT"
 
 
-def open(cstr, layername=None, layersql=None, extent=None, sql_dialect=None):
+def open(cstr, layername=None, layersql=None, extent=None, sql_dialect=None, open_for_update=False):
     """
     Common opener of an OGR datasource. Use either layername or layersql.
     The layersql argument takes precedence over a layername arg.
@@ -43,7 +43,7 @@ def open(cstr, layername=None, layersql=None, extent=None, sql_dialect=None):
     Returns:
         OGR datasource ,  OGR layer
     """
-    ds = ogr.Open(cstr)
+    ds = ogr.Open(cstr, update=open_for_update)
     if ds is None:
         raise Exception("Failed to open " + cstr)
     if layersql is not None:  # an sql statement will take precedence
@@ -413,10 +413,11 @@ def create_ogr_layer(ogr_ds, field_list, layername, geom_type, lco=None, srs=Non
     return layer
 
 
-def set_avg_rgb(poly_cstr, lyrname, out_field, rast_cstr, where=None, geom_field="geometry", id_field="ogc_fid"):
+def set_avg_rgb(poly_cstr, lyrname, out_field, rast_cstr, srs, where=None, geom_field="geometry", id_field="ogc_fid"):
     """
     Extract avg rgb from a raster inside polygons and store in out_field (string) as r,g,b
     Requires int32 id field like ogc_fid
+    Must use common srs (srs param)
     """
     ds = gdal.Open(rast_cstr)
     georef = ds.GetGeoTransform()
@@ -429,19 +430,32 @@ def set_avg_rgb(poly_cstr, lyrname, out_field, rast_cstr, where=None, geom_field
         'where': where,
         'geom_field': geom_field,
         'id_field': id_field,
+        "srs": srs
     }
-    layer_sql = "select {geom_field}, {id_field} from {lyrname} where st_intersects({geom_field}, WKT_EXT)".format(
-        **ctx)
+    layer_sql = """select {geom_field}, {id_field} as the_id from {lyrname}
+            where st_intersects({geom_field}, st_geomfromtext(WKT_EXT, {srs}))""".format(**ctx)
     if where:
         layer_sql += " and " + where
-    vec_ds, lyr = open(poly_cstr, layer_sql, extent=get_extent(georef, img_shape))
-    mask = just_burn_layer(lyr, georef, img_shape, attr=id_field, dtype=np.int32, all_touched=False)
+    LOG.info("Layersql: %s", layer_sql)
+    extent = get_extent(georef, img_shape)
+    LOG.info("Extent: %s", extent)
+    vec_ds, lyr = open(poly_cstr, layersql=layer_sql, extent=extent, open_for_update=True)
+    mask = just_burn_layer(lyr, georef, img_shape, attr='the_id', dtype=np.int32, all_touched=False)
+    LOG.info("Done burning - setting attr in %d features", lyr.GetFeatureCount())
+    n_ok = 0
     for n, feat in enumerate(lyr):
-        daid = feat[id_field]
+        if n % 100 == 0:
+            LOG.info("Done: %d, ok: %d", n, n_ok)
+        daid = feat['the_id']
         ctx['the_id'] = daid
         I, J = np.where(mask == daid)
-        r = int(round(np.sqrt(((mask[0, I, J] ** 2).mean()))))
-        g = int(round(np.sqrt(((mask[1, I, J] ** 2).mean()))))
-        b = int(round(np.sqrt(((mask[2, I, J] ** 2).mean()))))
-        ctx['rgb'] = '{},{},{}'.format(r, g, b)
-        vec_ds.ExecuteSQL("update {lyrname} set {out_field}='{rgb}' where {id_field}={the_id}".format(**ctx))
+        if I.size > 0:
+            n_ok += 1
+            r = int(round(np.sqrt(((rgb[0, I, J].astype(np.float64) ** 2).mean()))))
+            g = int(round(np.sqrt(((rgb[1, I, J].astype(np.float64) ** 2).mean()))))
+            b = int(round(np.sqrt(((rgb[2, I, J].astype(np.float64) ** 2).mean()))))
+            if n_ok % 100 == 0:
+                LOG.info("size: %d, ªsq-mean was %d, while raw mean red is: %.1f",
+                         I.size, r, rgb[0, I, J].astype(np.float64).mean())
+            ctx['rgb'] = '{},{},{}'.format(r, g, b)
+            vec_ds.ExecuteSQL("update {lyrname} set {out_field}='{rgb}' where {id_field}={the_id}".format(**ctx))
