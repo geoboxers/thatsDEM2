@@ -455,7 +455,49 @@ def set_avg_rgb(poly_cstr, lyrname, out_field, rast_cstr, srs, where=None, geom_
             g = int(round(np.sqrt(((rgb[1, I, J].astype(np.float64) ** 2).mean()))))
             b = int(round(np.sqrt(((rgb[2, I, J].astype(np.float64) ** 2).mean()))))
             if n_ok % 100 == 0:
-                LOG.info("size: %d, ªsq-mean was %d, while raw mean red is: %.1f",
+                LOG.info("size: %d, sq-mean was %d, while raw mean red is: %.1f",
                          I.size, r, rgb[0, I, J].astype(np.float64).mean())
             ctx['rgb'] = '{},{},{}'.format(r, g, b)
             vec_ds.ExecuteSQL("update {lyrname} set {out_field}='{rgb}' where {id_field}={the_id}".format(**ctx))
+
+
+def set_avg_rgb_group(poly_cstr, lyrsql, updatesql, rast_cstr):
+    """
+    Extract avg rgb from a raster inside polygons (possibly grouped by some attr) and store as string (r,g,b)
+    via updtaesql cmd.
+    E.g.:
+    layersql must select geomerty, a unique int amongst groups,  and a group by / id attr as first attr, e.g:
+    - select st_union(geometry) as geom, max(ogc_fid), some_attr from lyr where something group by some_attr
+    updatesql must contain placeholders for output field value and the id / group by attr value used above, e.g.:
+    - update lyr set rgb='{}' where someattr={}
+    """
+    ds = gdal.Open(rast_cstr)
+    georef = ds.GetGeoTransform()
+    rgb = ds.ReadAsArray()
+    assert rgb.shape[0] == 3
+    img_shape = rgb.shape[1:]
+    extent = get_extent(georef, img_shape)
+    LOG.info("Extent: %s", extent)
+    vec_ds, lyr = open(poly_cstr, layersql=lyrsql, extent=extent, open_for_update=True)
+    ldefn = lyr.GetLayerDefn()
+    int_attr_name = ldefn.GetFieldDefn(0).name
+    id_attr_name = ldefn.GetFieldDefn(1).name
+    mask = just_burn_layer(lyr, georef, img_shape, attr=int_attr_name, dtype=np.int32, all_touched=False)
+    LOG.info("Done burning - setting attr in %d features", lyr.GetFeatureCount())
+    n_ok = 0
+    for n, feat in enumerate(lyr):
+        if n % 100 == 0:
+            LOG.info("Done: %d, ok: %d", n, n_ok)
+        int_id = feat[int_attr_name]
+        group_id = feat[id_attr_name]
+        I, J = np.where(mask == int_id)
+        if I.size > 0:
+            n_ok += 1
+            r = int(round(np.sqrt(((rgb[0, I, J].astype(np.float64) ** 2).mean()))))
+            g = int(round(np.sqrt(((rgb[1, I, J].astype(np.float64) ** 2).mean()))))
+            b = int(round(np.sqrt(((rgb[2, I, J].astype(np.float64) ** 2).mean()))))
+            if n_ok % 100 == 0:
+                LOG.info("size: %d, sq-mean was %d, while raw mean red is: %.1f",
+                         I.size, r, rgb[0, I, J].astype(np.float64).mean())
+            rgb_str = '{},{},{}'.format(r, g, b)
+            vec_ds.ExecuteSQL(updatesql.format(rgb_str, group_id))
