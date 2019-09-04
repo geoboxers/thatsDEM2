@@ -17,11 +17,22 @@ Methods to work easier with ogr geometries and numpy arrays in combination.
 Contains some custom geospatial methods action on numpy arrays.
 silyko, June 2016.
 """
-import os
 import ctypes
+
 import numpy as np
 from osgeo import ogr
-from thatsDEM2.shared_libraries import *
+
+from thatsDEM2 import shared_libraries as sh
+
+# Py2 to 3
+try:
+    basestring
+except NameError:
+    basestring = str
+try:
+    xrange
+except NameError:
+    xrange = range
 
 XY_TYPE = np.ctypeslib.ndpointer(dtype=np.float64, ndim=2, flags=['C', 'O', 'A', 'W'])
 GRID_TYPE = np.ctypeslib.ndpointer(
@@ -43,7 +54,7 @@ INT32_TYPE = np.ctypeslib.ndpointer(
 
 
 # Load the library using np.ctypeslib
-lib = np.ctypeslib.load_library(LIB_FGEOM, LIB_DIR)
+lib = np.ctypeslib.load_library(sh.LIB_FGEOM, sh.LIB_DIR)
 
 ##############
 # corresponds to
@@ -58,17 +69,17 @@ lib.p_in_poly.argtypes = [XY_TYPE, MASK_TYPE,
                           XY_TYPE, ctypes.c_uint, UINT32_TYPE, ctypes.c_uint]
 lib.p_in_poly.restype = ctypes.c_int
 lib.get_triangle_geometry.argtypes = [
-    XY_TYPE, Z_TYPE, LP_CINT, np.ctypeslib.ndpointer(
+    XY_TYPE, Z_TYPE, sh.LP_CINT, np.ctypeslib.ndpointer(
         dtype=np.float32, ndim=2, flags=[
             'C', 'O', 'A', 'W']), ctypes.c_int]
 lib.get_triangle_geometry.restype = None
 lib.get_normals.argtypes = [
-    XY_TYPE, Z_TYPE, LP_CINT, np.ctypeslib.ndpointer(
+    XY_TYPE, Z_TYPE, sh.LP_CINT, np.ctypeslib.ndpointer(
         dtype=np.float64, ndim=2, flags=[
             'C', 'O', 'A', 'W']), ctypes.c_int]
 lib.get_normals.restype = None
 lib.mark_bd_vertices.argtypes = [
-    MASK_TYPE, MASK_TYPE, LP_CINT, MASK_TYPE, ctypes.c_int, ctypes.c_int]
+    MASK_TYPE, MASK_TYPE, sh.LP_CINT, MASK_TYPE, ctypes.c_int, ctypes.c_int]
 lib.mark_bd_vertices.restype = None
 # int fill_spatial_index(int *sorted_flat_indices, int *index, int
 # npoints, int max_index)
@@ -78,18 +89,18 @@ lib.fill_spatial_index.restype = ctypes.c_int
 
 
 FILTER_FUNC_TYPE = ctypes.CFUNCTYPE(ctypes.c_double,
-                                    LP_CDOUBLE,
+                                    sh.LP_CDOUBLE,
                                     ctypes.c_double,
-                                    LP_CINT,
-                                    LP_CDOUBLE,
-                                    LP_CDOUBLE,
+                                    sh.LP_CINT,
+                                    sh.LP_CDOUBLE,
+                                    sh.LP_CDOUBLE,
                                     ctypes.c_double,
                                     ctypes.c_double,
                                     ctypes.c_void_p)
 
 lib.apply_filter.argtypes = (
     XY_TYPE,
-    LP_CDOUBLE,
+    sh.LP_CDOUBLE,
     XY_TYPE,
     Z_TYPE,
     Z_TYPE,
@@ -114,7 +125,7 @@ lib.moving_bins.restype = None
 # void tri_filter_low(double *z, double *zout, int *tri, double cut_off,
 # int ntri)
 lib.tri_filter_low.argtypes = [Z_TYPE, Z_TYPE,
-                               LP_CINT, ctypes.c_double, ctypes.c_int]
+                               sh.LP_CINT, ctypes.c_double, ctypes.c_int]
 lib.tri_filter_low.restype = None
 # hmap filler
 # void fill_it_up(unsigned char *out, unsigned int *hmap, int rows, int
@@ -183,7 +194,7 @@ def apply_filter(along_xy, along_z,
     if along_z is not None:
         # If using a 3d filter - construct pointer
         assert along_z.shape[0] == along_xy.shape[0]
-        pz = along_z.ctypes.data_as(LP_CDOUBLE)
+        pz = along_z.ctypes.data_as(sh.LP_CDOUBLE)
     else:
         pz = None
     if params is not None and not isinstance(params, ctypes.c_void_p):
@@ -534,7 +545,7 @@ def points_in_polygon(points, rings):
         nv.append(ring.shape[0])
     nv = np.asarray(nv, dtype=np.uint32)
     out = np.empty((points.shape[0],), dtype=np.bool)  # its a byte, really
-    some = lib.p_in_poly(points, out, verts, points.shape[0], nv, len(rings))
+    lib.p_in_poly(points, out, verts, points.shape[0], nv, len(rings))
     return out
 
 
