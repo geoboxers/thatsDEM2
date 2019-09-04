@@ -869,7 +869,7 @@ double adaptive_gaussian_filter(double *xy, double z,
         /*printf("tw: %.4f\n", tw);*/
         m /= tw;
         /* DEBUG - turn off eventually */
-        if isnan(m){
+        if (isnan(m)){
             printf("n: %d, tw: %.5f, sd: %.4f, dm: %.4f\n", n, tw, sd, dm/n);
         }
     }
