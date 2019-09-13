@@ -446,8 +446,9 @@ def transfer_rast_to_vect(poly_cstr, lyrname, out_field, rast_cstr, srs, method,
 
     if where:
         if restrict_to_tile:
-            layer_sql += " and"
-        layer_sql += " " + where
+            layer_sql += " and " + where
+        else:
+            layer_sql += " where " + where
     LOG.info("Layersql: %s", layer_sql)
     extent = get_extent(georef, img_shape)
     LOG.info("Extent: %s", extent)
