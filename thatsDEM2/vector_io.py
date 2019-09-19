@@ -413,17 +413,22 @@ def create_ogr_layer(ogr_ds, field_list, layername, geom_type, lco=None, srs=Non
     return layer
 
 
-def set_avg_rgb(poly_cstr, lyrname, out_field, rast_cstr, srs, where=None, geom_field="geometry", id_field="ogc_fid"):
+def transfer_rast_to_vect(poly_cstr, lyrname, out_field, rast_cstr, srs, method, where=None, geom_field="geometry",
+                          id_field="ogc_fid", buffer_rad=0, restrict_to_tile=True):
     """
-    Extract avg rgb from a raster inside polygons and store in out_field (string) as r,g,b
-    Requires int32 id field like ogc_fid
-    Must use common srs (srs param)
+    Transfer raster values to features in a layer - using provided method.
+    Note: Takes place all in memory.
+    TODO: Add a less memory intensive version with sequential reading from raster.
+    args:
+        rast_cstr: Raster datasource (must fit in memory for now - so tile it or whatever)
+        method: function of raster values - must return is_ok, attr
+        buffer_rad: If nonzero buffer input geometries
     """
     ds = gdal.Open(rast_cstr)
     georef = ds.GetGeoTransform()
-    rgb = ds.ReadAsArray()
-    assert rgb.shape[0] == 3
-    img_shape = rgb.shape[1:]
+    raster_array = ds.ReadAsArray()
+    img_shape = (ds.RasterYSize, ds.RasterXSize)
+    LOG.info("Done reading raster, shape is: %s", img_shape)
     ctx = {
         'lyrname': lyrname,
         'out_field': out_field,
@@ -432,33 +437,64 @@ def set_avg_rgb(poly_cstr, lyrname, out_field, rast_cstr, srs, where=None, geom_
         'id_field': id_field,
         "srs": srs
     }
-    layer_sql = """select {geom_field}, {id_field} as the_id from {lyrname}
-            where st_intersects({geom_field}, st_geomfromtext(WKT_EXT, {srs}))""".format(**ctx)
+    if buffer_rad:
+        ctx['geom_field'] = 'st_buffer({}, {})'.format(geom_field, buffer_rad)
+    layer_sql = """select {geom_field}, {out_field}, {id_field} as the_id from {lyrname}""".format(**ctx)
+    if restrict_to_tile:
+        # Weird geoms could be skipped by this, so add as an optione
+        layer_sql += " where st_intersects({geom_field}, st_geomfromtext(WKT_EXT, {srs}))".format(**ctx)
+
     if where:
-        layer_sql += " and " + where
+        if restrict_to_tile:
+            layer_sql += " and " + where
+        else:
+            layer_sql += " where " + where
     LOG.info("Layersql: %s", layer_sql)
     extent = get_extent(georef, img_shape)
     LOG.info("Extent: %s", extent)
     vec_ds, lyr = open(poly_cstr, layersql=layer_sql, extent=extent, open_for_update=True)
     mask = just_burn_layer(lyr, georef, img_shape, attr='the_id', dtype=np.int32, all_touched=False)
     LOG.info("Done burning - setting attr in %d features", lyr.GetFeatureCount())
+    LOG.debug("%s", np.unique(mask))
     n_ok = 0
     for n, feat in enumerate(lyr):
         if n % 100 == 0:
             LOG.info("Done: %d, ok: %d", n, n_ok)
         daid = feat['the_id']
         ctx['the_id'] = daid
+        area = feat.GetGeometryRef().GetArea()
         I, J = np.where(mask == daid)
-        if I.size > 0:
-            n_ok += 1
-            r = int(round(np.sqrt(((rgb[0, I, J].astype(np.float64) ** 2).mean()))))
-            g = int(round(np.sqrt(((rgb[1, I, J].astype(np.float64) ** 2).mean()))))
-            b = int(round(np.sqrt(((rgb[2, I, J].astype(np.float64) ** 2).mean()))))
-            if n_ok % 100 == 0:
-                LOG.info("size: %d, sq-mean was %d, while raw mean red is: %.1f",
-                         I.size, r, rgb[0, I, J].astype(np.float64).mean())
-            ctx['rgb'] = '{},{},{}'.format(r, g, b)
-            vec_ds.ExecuteSQL("update {lyrname} set {out_field}='{rgb}' where {id_field}={the_id}".format(**ctx))
+        # At least 30% covered if already set - todo: provide this as argument
+        if I.size > 0 and (feat[out_field] is None or I.size * (georef[1] ** 2) > area * 0.3):
+            is_ok, val = method(raster_array, I, J)
+            if is_ok:
+                n_ok += 1
+                ctx['_value_'] = val
+                updatesql = "update {lyrname} set {out_field}={_value_} where {id_field}={the_id}".format(**ctx)
+                LOG.debug("Executing: %s", updatesql)
+                vec_ds.ExecuteSQL(updatesql)
+        else:
+            LOG.debug("Nothing found for %s - mask size: %s, valid: %s, area: %s",
+                      daid, I.size, feat.GetGeometryRef().IsValid(), area)
+
+
+def get_avg_rgb(rgb, I, J):
+    """
+    Simple avg rgb from rgb array.
+    """
+    r = int(round(np.sqrt(((rgb[0, I, J].astype(np.float64) ** 2).mean()))))
+    g = int(round(np.sqrt(((rgb[1, I, J].astype(np.float64) ** 2).mean()))))
+    b = int(round(np.sqrt(((rgb[2, I, J].astype(np.float64) ** 2).mean()))))
+    return "'{},{},{}'".format(r, g, b)
+
+
+def set_avg_rgb(poly_cstr, lyrname, out_field, rast_cstr, srs, where=None, geom_field="geometry", id_field="ogc_fid"):
+    """
+    Extract avg rgb from a raster inside polygons and store in out_field (string) as r,g,b
+    Requires int32 id field like ogc_fid
+    Must use common srs (srs param)
+    """
+    transfer_rast_to_vect(poly_cstr, lyrname, out_field, rast_cstr, srs, get_avg_rgb, where, geom_field, id_field)
 
 
 def set_avg_rgb_group(poly_cstr, lyrsql, updatesql, rast_cstr):

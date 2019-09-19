@@ -5,14 +5,14 @@ Unittests for pointcloud
 """
 
 import os
-import sys
+# import sys
 import unittest
-import time
+# import time
 import logging
 import numpy as np
 import tempfile
 import json
-import ctypes
+# import ctypes
 from thatsDEM2 import pointcloud, osr_utils
 
 LOG = logging.getLogger(__name__)
@@ -372,10 +372,11 @@ class TestPointcloud(unittest.TestCase):
         self.assertAlmostEqual(np.fabs(pc.xy - pc_restore.xy).max(), 0, 3)
         self.assertAlmostEqual(np.fabs(pc.z - pc_restore.z).max(), 0, 3)
         # Try some ogr sql
-        layersql = "select ogr_geometry, 5.0 as data from OGRGeojson"
+        layersql = "select ogr_geometry, 5.0 as data from pointcloud"
         pc_restore2 = pointcloud.Pointcloud.from_ogr(path, layersql=layersql)
         self.assertTrue((pc_restore2.data == 5).all())
         os.remove(path)
+
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.DEBUG)
