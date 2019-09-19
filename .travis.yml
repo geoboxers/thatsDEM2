@@ -10,4 +10,4 @@ before_install:
   - pip install scons
 install:
   - scons
-script: nosetests -v
+script: pytest -v
