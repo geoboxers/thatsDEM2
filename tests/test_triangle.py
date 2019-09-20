@@ -4,8 +4,8 @@ Unittests for triangle
 @author: simlk
 """
 
-import os
-import sys
+# import os
+# import sys
 import unittest
 import time
 import logging
@@ -22,9 +22,9 @@ class TestTriangle(unittest.TestCase):
         self.n1 = 4000
         self.n2 = 4000
         self.points = np.random.rand(self.n1, 2) * 1000.0
-        t1 = time.clock()
+        t1 = time.time()
         self.tri = triangle.Triangulation(self.points, -1)
-        t2 = time.clock()
+        t2 = time.time()
         t3 = t2 - t1
         LOG.info("Building triangulation and index of %d points: %.4f s" % (self.n1, t3))
 
@@ -47,7 +47,7 @@ class TestTriangle(unittest.TestCase):
         LOG.info("Finding %d simplices: %.4f s, pr. 1e6: %.4f s" % (self.n2, t3, t3 / self.n2 * 1e6))
         self.assertGreaterEqual(T.min(), 0)
         self.assertLess(T.max(), self.tri.ntrig)
-    
+
     def test_find_triangles2(self):
         LOG.info("Testing find_triangles (centers).")
         centers = self.tri.get_triangle_centers()
@@ -56,9 +56,9 @@ class TestTriangle(unittest.TestCase):
 
     def test_interpolation(self):
         z = np.random.rand(self.n1) * 100
-        t1 = time.clock()
+        t1 = time.time()
         zi = self.tri.interpolate(z, self.points)
-        t2 = time.clock()
+        t2 = time.time()
         t3 = t2 - t1
         LOG.info("Interpolation test of vertices:  %.4f s, pr. 1e6: %.4f s" % (t3, t3 / self.n1 * 1e6))
         D = np.fabs(z - zi)

@@ -540,7 +540,7 @@ class Grid(object):
             raise TypeError("srs must be osr.SpatialReference")
         src_ds = self.as_gdal_dataset("in", "MEM")
         # calculate dest georef and size
-        extent = map(float, self.extent)
+        extent = list(map(float, self.extent))
         source_srs = self.srs
         target_srs = dst_srs
         transform = osr.CoordinateTransformation(source_srs, target_srs)
