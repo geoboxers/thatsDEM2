@@ -90,7 +90,7 @@ class TestPointcloud(unittest.TestCase):
         LOG.info("Testing lidar pointcloud")
         pc = pointcloud.LidarPointcloud(np.ones((3, 2)), np.ones(3), c=[
                                         2, 2, 3], some_attr=np.ones(3))
-        self.assertItemsEqual(pc.get_classes(), [2, 3])
+        self.assertEqual(set(pc.get_classes()), set([2, 3]))
         self.assertEqual(pc.cut_to_class(2).size, 2)
 
     def test_lidar_pointcloud_chained_cut(self):
@@ -368,7 +368,7 @@ class TestPointcloud(unittest.TestCase):
             self.assertTrue("features" in obj)
             self.assertEqual(len(obj["features"]), pc.size)
         pc_restore = pointcloud.Pointcloud.from_ogr(path)
-        self.assertItemsEqual(pc.attributes, pc_restore.attributes)
+        self.assertEqual(set(pc.attributes), set(pc_restore.attributes))
         self.assertAlmostEqual(np.fabs(pc.xy - pc_restore.xy).max(), 0, 3)
         self.assertAlmostEqual(np.fabs(pc.z - pc_restore.z).max(), 0, 3)
         # Try some ogr sql

@@ -274,7 +274,7 @@ def get_geometries(cstr, layername=None, layersql=None, extent=None, explode=Tru
     """
     # If executing fancy sql like selecting buffers etc, be sure to add a
     # where ST_Intersects(geom,TILE_POLY) - otherwise it's gonna be slow....
-    t1 = time.clock()
+    t1 = time.time()
     ds, layer = open(cstr, layername, layersql, extent)
     if extent is not None and set_filter:
         # This assumes that the extent provided is in the same coordinate
@@ -300,7 +300,7 @@ def get_geometries(cstr, layername=None, layersql=None, extent=None, explode=Tru
         ds.ReleaseResultSet(layer)
     layer = None
     ds = None
-    t2 = time.clock()
+    t2 = time.time()
     LOG.debug("Fetching geoms took %.3f s" % (t2 - t1))
     return geoms
 
