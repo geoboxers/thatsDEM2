@@ -413,21 +413,71 @@ def create_ogr_layer(ogr_ds, field_list, layername, geom_type, lco=None, srs=Non
     return layer
 
 
+def wrap_rast_to_vect(poly_cstr, lyrname, out_field, rast_cstr, srs, method, where=None, geom_field="geometry",
+                      id_field="ogc_fid", buffer_rad=0, tile_size=20000):
+    """
+    Wrap a possibly large raster by looping over subtiles.
+    args:
+        ... (See transfer_rast_to_vect)
+        tile_size: cells (x and y) to use
+    """
+    ds = gdal.Open(rast_cstr)
+    shape = (ds.RasterYSize, ds.RasterYSize)
+    ds = None
+    mx = max(shape)
+    if mx < 1.2 * tile_size:
+        LOG.info("Non optimal tile_size - adjust")
+    y_tiles = int(shape[0] / tile_size) + 1
+    x_tiles = int(shape[1] / tile_size) + 1
+    LOG.info("Looping over %d y tiles, %d x tiles", y_tiles, x_tiles)
+    window = (tile_size, tile_size)
+    for y in range(y_tiles):
+        yoff = y * tile_size
+        for x in range(x_tiles):
+            xoff = x * tile_size
+            offset = (yoff, xoff)
+            LOG.info("Doing tile (%d, %d)", y, x)
+            transfer_rast_to_vect(
+                poly_cstr, lyrname, out_field,
+                rast_cstr, srs, method, where, geom_field,
+                id_field, buffer_rad, offset, window)
+
+
 def transfer_rast_to_vect(poly_cstr, lyrname, out_field, rast_cstr, srs, method, where=None, geom_field="geometry",
-                          id_field="ogc_fid", buffer_rad=0, restrict_to_tile=True):
+                          id_field="ogc_fid", buffer_rad=0, offset=None, window=None):
     """
     Transfer raster values to features in a layer - using provided method.
     Note: Takes place all in memory.
     TODO: Add a less memory intensive version with sequential reading from raster.
     args:
+        poly_cstr: Vector datasource connection string
+        lyrname: Layername
+        out_field: Output field for aggregated raster values
         rast_cstr: Raster datasource (must fit in memory for now - so tile it or whatever)
-        method: function of raster values - must return is_ok, attr
+        srs: SRS
+        method: function of raster values - must return value (will skip if this is None)
         buffer_rad: If nonzero buffer input geometries
+        offset: (y_off, x_off), if specified start reading from here.
+        window: (y_win, x_win), if specified read this subwindow
     """
+    restrict_to_tile = True  # Could be an option
     ds = gdal.Open(rast_cstr)
-    georef = ds.GetGeoTransform()
-    raster_array = ds.ReadAsArray()
-    img_shape = (ds.RasterYSize, ds.RasterXSize)
+    georef = list(ds.GetGeoTransform())
+    # Get ndvals
+    nd_vals = [ds.GetRasterBand(i).GetNoDataValue() for i in range(1, ds.RasterCount + 1)]
+    if offset:
+        # Move ul
+        yoff, xoff = offset
+        georef[0] += georef[1] * xoff
+        georef[3] += georef[5] * yoff
+    else:
+        yoff, xoff = 0, 0
+    if window:
+        ywin, xwin = window
+        ywin = min(ds.RasterYSize - yoff, ywin)
+        xwin = min(ds.RasterXSize - xoff, xwin)
+    raster_array = ds.ReadAsArray(xoff=xoff, yoff=yoff, xsize=xwin, ysize=ywin)
+    img_shape = raster_array.shape[:2]
     LOG.info("Done reading raster, shape is: %s", img_shape)
     ctx = {
         'lyrname': lyrname,
@@ -441,7 +491,7 @@ def transfer_rast_to_vect(poly_cstr, lyrname, out_field, rast_cstr, srs, method,
         ctx['geom_field'] = 'st_buffer({}, {})'.format(geom_field, buffer_rad)
     layer_sql = """select {geom_field}, {out_field}, {id_field} as the_id from {lyrname}""".format(**ctx)
     if restrict_to_tile:
-        # Weird geoms could be skipped by this, so add as an optione
+        # Weird geoms could be skipped by this, so add as an option
         layer_sql += " where st_intersects({geom_field}, st_geomfromtext(WKT_EXT, {srs}))".format(**ctx)
 
     if where:
@@ -466,8 +516,8 @@ def transfer_rast_to_vect(poly_cstr, lyrname, out_field, rast_cstr, srs, method,
         I, J = np.where(mask == daid)
         # At least 30% covered if already set - todo: provide this as argument
         if I.size > 0 and (feat[out_field] is None or I.size * (georef[1] ** 2) > area * 0.3):
-            is_ok, val = method(raster_array, I, J)
-            if is_ok:
+            val = method(raster_array, I, J, nd_vals)
+            if val is not None:
                 n_ok += 1
                 ctx['_value_'] = val
                 updatesql = "update {lyrname} set {out_field}={_value_} where {id_field}={the_id}".format(**ctx)
@@ -478,7 +528,7 @@ def transfer_rast_to_vect(poly_cstr, lyrname, out_field, rast_cstr, srs, method,
                       daid, I.size, feat.GetGeometryRef().IsValid(), area)
 
 
-def get_avg_rgb(rgb, I, J):
+def get_avg_rgb(rgb, I, J, *args):
     """
     Simple avg rgb from rgb array.
     """
